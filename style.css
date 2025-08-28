@@ -1,26 +1,26 @@
 /* CSS Variables for Theming */
 :root {
     --background-dark: #0a0a0a;
-    --background-light: #f5f5f5;
+    --background-light: #f8fafc;
     --surface-dark: #1a1a1a;
     --surface-light: #ffffff;
     --text-dark: #e5e5e5;
-    --text-light: #1a1a1a;
+    --text-light: #1a202c;
     --text-secondary-dark: #a0a0a0;
-    --text-secondary-light: #737373;
+    --text-secondary-light: #4a5568;
     --primary-green: #00ff99;
     /* REDUCED GLOW */
     --primary-green-glow: 0 0 8px rgba(0, 255, 153, 0.8), 0 0 15px rgba(0, 255, 153, 0.5);
     --border-dark: rgba(255, 255, 255, 0.1);
-    --border-light: #d1d5db; /* A bit darker for better contrast in light mode */
+    --border-light: #e2e8f0;
     --input-bg-dark: #0f0f0f;
-    --input-bg-light: #e5e7eb; /* Gray-200 */
+    --input-bg-light: #f1f5f9;
 }
 
 /* Base Body Styles */
 body {
     font-family: 'Inter', sans-serif;
-    transition: background-color 0.3s ease, color 0.3s ease;
+    transition: background-color 0.5s cubic-bezier(0.4, 0, 0.2, 1), color 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .dark body {
     background-color: var(--background-dark);
@@ -46,79 +46,167 @@ body {
 .card {
     background-color: var(--surface-light);
     border: 1px solid var(--border-light);
-    border-radius: 1.25rem;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    border-radius: 1.5rem;
+    box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(10px);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .dark .card {
     background-color: var(--surface-dark);
     border-color: var(--border-dark);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+}
+
+/* Add cinematic spacing */
+#config-section {
+    margin-top: 2rem !important;
+    transform-origin: top center;
+}
+
+#playlist-section {
+    margin-top: 1.5rem !important;
+    transform-origin: top center;
+    transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#playlist-section.playlist-under-input {
+    margin-top: 1rem !important;
+}
+
+/* Cinematic transitions */
+.cinematic-enter {
+    animation: cinematicEnter 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.cinematic-exit {
+    animation: cinematicExit 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes cinematicEnter {
+    0% {
+        opacity: 0;
+        transform: translateY(30px) scale(0.9) rotateX(10deg);
+        filter: blur(10px);
+    }
+    50% {
+        opacity: 0.6;
+        transform: translateY(10px) scale(0.95) rotateX(5deg);
+        filter: blur(5px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1) rotateX(0deg);
+        filter: blur(0px);
+    }
+}
+
+@keyframes cinematicExit {
+    0% {
+        opacity: 1;
+        transform: translateY(0) scale(1) rotateX(0deg);
+        filter: blur(0px);
+    }
+    50% {
+        opacity: 0.4;
+        transform: translateY(-10px) scale(1.02) rotateX(-5deg);
+        filter: blur(3px);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-30px) scale(0.8) rotateX(-15deg);
+        filter: blur(15px);
+    }
 }
 .input-base {
     width: 100%;
     border: 2px solid var(--border-light);
     border-radius: 9999px;
     padding: 1rem 4rem 1rem 1.5rem;
-    transition: all 0.3s ease;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(10px);
+    font-size: 1.1rem;
 }
 .input-base:focus {
     outline: none;
-    box-shadow: 0 0 0 2px var(--primary-green);
+    box-shadow: 0 0 0 3px rgba(0, 255, 153, 0.3), 0 8px 25px rgba(0, 0, 0, 0.1);
+    border-color: var(--primary-green);
+    transform: translateY(-2px);
 }
 .dark .input-base {
-    background-color: var(--input-bg-dark);
+    background-color: rgba(15, 15, 15, 0.8);
     border-color: var(--border-dark);
     color: var(--text-dark);
 }
 .light .input-base {
-    background-color: var(--surface-light);
+    background-color: rgba(255, 255, 255, 0.9);
     border-color: var(--border-light);
     color: var(--text-light);
 }
 
 /* NEW: Improved Dropdown/Select Styling */
 select, .input-form {
-        background-color: var(--input-bg-light);
-        border: 1px solid var(--border-light);
-        color: var(--text-light);
-        padding: 0.5rem 0.75rem;
-        border-radius: 0.375rem;
-        width: 100%;
-        transition: all 0.2s ease;
+    background-color: var(--input-bg-light);
+    border: 1px solid var(--border-light);
+    color: var(--text-light);
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    width: 100%;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    font-size: 0.95rem;
 }
 select:focus, .input-form:focus {
-        outline: none;
-        box-shadow: 0 0 0 2px var(--primary-green);
-        border-color: var(--primary-green);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(0, 255, 153, 0.2);
+    border-color: var(--primary-green);
+    transform: translateY(-1px);
 }
 .dark select, .dark .input-form {
-        background-color: var(--input-bg-dark);
-        border-color: var(--border-dark);
-        color: var(--text-dark);
+    background-color: var(--input-bg-dark);
+    border-color: var(--border-dark);
+    color: var(--text-dark);
 }
 
 .btn {
-    padding: 0.5rem 1rem;
+    padding: 0.625rem 1.25rem;
     border-radius: 9999px;
-    transition: background-color 0.2s;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     font-weight: 500;
+    font-size: 0.95rem;
+    border: 1px solid transparent;
 }
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+.playlist-item-row.selected {
+    background-color: rgba(0, 255, 153, 0.1);
+    border-left: 3px solid var(--primary-green);
+}
+
 .btn-primary {
     background-color: var(--primary-green);
     color: black;
+    border-color: var(--primary-green);
 }
 .btn-primary:hover {
     background-color: #33ffac;
+    box-shadow: 0 8px 25px rgba(0, 255, 153, 0.4);
 }
+
 .btn-green-outline {
     border: 2px solid var(--primary-green);
     color: var(--primary-green);
     padding: 0.75rem 1.5rem;
+    background-color: transparent;
 }
 .btn-green-outline:hover {
     background-color: rgba(0, 255, 153, 0.1);
+    box-shadow: 0 8px 25px rgba(0, 255, 153, 0.2);
 }
 
 /* Custom styles for new config layout */
@@ -128,13 +216,25 @@ select:focus, .input-form:focus {
 .format-table-row.selected td {
     color: var(--primary-green);
 }
+/* If a best row is selected, keep rainbow text instead of green */
+.format-table-row.best-row.selected td {
+    background: linear-gradient(90deg, #4ffa58, #ffd64f, #ff5757);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent !important;
+}
 .disabled-section {
     opacity: 0.5;
     pointer-events: none;
 }
+/* Best rows: rainbow highlight */
+/* WITH THIS */
 .best-row td {
-    font-weight: bold;
-    color: var(--primary-green) !important; /* Make best row color stand out */
+    font-weight: 700;
+    background: linear-gradient(90deg, #4ffa58, #ffd64f, #ff5757);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent !important;
 }
 /* NEW: Highlight for differing best codecs */
 .best-row .diff-codec {
@@ -147,6 +247,51 @@ select:focus, .input-form:focus {
     color: black !important;
 }
 
+.table-container {
+    max-height: 24rem;
+    overflow-y: auto;
+    border: 1px solid var(--border-light);
+    border-radius: 0.5rem;
+}
+
+.dark .table-container {
+    border-color: var(--border-dark);
+}
+
+.line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.playlist-item-thumbnail {
+    transition: transform 0.2s ease;
+}
+
+.playlist-item-row:hover .playlist-item-thumbnail {
+    transform: scale(1.05);
+}
+
+/* Smooth scrolling for table */
+.table-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.table-container::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+}
+
+.table-container::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+}
+
+.dark .table-container::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+}
 #config-section .table-container {
         border: 1px solid var(--border-light);
         border-radius: 0.5rem;
@@ -173,7 +318,23 @@ select:focus, .input-form:focus {
 }
 
 #config-thumbnail {
-    aspect-ratio: 16 / 9;
+    width: 590px !important;
+    height: 332px !important;
+    max-width: 590px !important;
+    max-height: 332px !important;
+    min-width: 590px !important;
+    min-height: 332px !important;
+    aspect-ratio: 590/332 !important;
+    object-fit: contain; /* Use contain instead of cover to prevent cropping */
+    background-color: var(--surface-light);
+    flex-shrink: 0;
+    display: block;
+    border: 1px solid var(--border-light);
+}
+
+.dark #config-thumbnail {
+    background-color: var(--surface-dark);
+    border-color: var(--border-dark);
 }
 
 /* Sidebar Styles */
@@ -187,20 +348,20 @@ select:focus, .input-form:focus {
     flex-direction: column;
     justify-content: space-between;
     padding: 1rem;
-    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.5s cubic-bezier(0.4, 0, 0.2, 1);
     width: 15rem; /* Expanded width */
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
 }
 .sidebar.collapsed {
     width: 5rem; /* Collapsed width */
 }
 .dark .sidebar {
-    background-color: rgba(26, 26, 26, 0.6);
+    background-color: rgba(26, 26, 26, 0.8);
     border: 1px solid var(--border-dark);
 }
 .light .sidebar {
-    background-color: rgba(255, 255, 255, 0.6);
+    background-color: rgba(255, 255, 255, 0.85);
     border: 1px solid var(--border-light);
 }
 .sidebar-link {
@@ -268,6 +429,12 @@ select:focus, .input-form:focus {
     display: flex;
     flex-direction: column;
 }
+
+/* Increase vertical gaps between sections and options in config window without changing widths */
+#config-section .space-y-6 > * + * { margin-top: 1.5rem !important; }
+#config-section .space-y-8 > * + * { margin-top: 2rem !important; }
+#config-section .grid.gap-4 { gap: 1rem !important; }
+.format-section { margin-top: 0.25rem; }
 
 .setting-description {
     font-size: 0.875rem; /* 14px */
@@ -385,4 +552,21 @@ select:focus, .input-form:focus {
     justify-content: center; /* Center content within button */
     gap: 0.5rem;
     width: 100%; /* Make buttons fill grid cells */
+}
+
+/* --- Downloads UI tweaks --- */
+.download-actions-row .btn {
+    border-radius: 9999px !important; /* fully rounded */
+    border-width: 1px;
+}
+.download-actions-row .btn svg {
+    pointer-events: none;
+}
+.download-actions-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+.progress-bar {
+    transition: width 0.3s ease;
 }
