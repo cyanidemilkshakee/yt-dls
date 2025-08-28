@@ -1,7 +1,13 @@
 // --- Configuration ---
 const API_BASE_URL = 'http://localhost:5000/api';
 
-// --- 3D Background (No changes needed here) ---
+// --- Add new global variables ---
+let currentPlaylistInfo = null;
+let selectedPlaylistVideoUrls = new Set();
+const playlistSection = document.getElementById('playlist-section');
+const mainInterfaceSections = [document.getElementById('description-section'), document.getElementById('input-section'), document.getElementById('show-downloads-btn')];
+
+// --- 3D Background ---
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('bg-canvas'), alpha: true });
@@ -19,6 +25,7 @@ function animate() {
     renderer.render(scene, camera);
 }
 animate();
+
 window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -30,68 +37,81 @@ const sidebar = document.getElementById('sidebar');
 const collapseBtn = document.getElementById('sidebar-collapse-btn');
 const mainContentWrapper = document.getElementById('main-content-wrapper');
 
+let sidebarPinned = false;
+
 function setSidebarState(collapsed) {
-    const wrapper = document.getElementById('main-content-wrapper');
-        if (collapsed) {
+    if (!mainContentWrapper || !collapseBtn) return;
+
+    if (collapsed) {
         sidebar.classList.add('collapsed');
-        // Set margin for collapsed sidebar (5rem width + 1rem gap)
-        wrapper.style.marginLeft = '6rem'; 
         collapseBtn.querySelector('svg').style.transform = 'rotate(180deg)';
+        collapseBtn.querySelector('svg').style.transition = 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
     } else {
         sidebar.classList.remove('collapsed');
-        // Set margin for expanded sidebar (15rem width + 1rem gap)
-        wrapper.style.marginLeft = '16rem';
         collapseBtn.querySelector('svg').style.transform = 'rotate(0deg)';
+        collapseBtn.querySelector('svg').style.transition = 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
     }
 }
 
-// Expand sidebar on mouse enter
-sidebar.addEventListener('mouseenter', () => {
-    setSidebarState(false);
+// Add click event for collapse button
+collapseBtn.addEventListener('click', () => {
+    sidebarPinned = !sidebarPinned;
+    setSidebarState(!sidebarPinned);
 });
 
-// Collapse sidebar on mouse leave
+// Expand sidebar on mouse enter (only if not pinned)
+sidebar.addEventListener('mouseenter', () => {
+    if (!sidebarPinned) {
+        setSidebarState(false);
+    }
+});
+
+// Collapse sidebar on mouse leave (only if not pinned)
 sidebar.addEventListener('mouseleave', () => {
-    setSidebarState(true);
+    if (!sidebarPinned) {
+        setSidebarState(true);
+    }
 });
 
 // Set sidebar to collapsed by default on page load
 document.addEventListener('DOMContentLoaded', () => {
-        setSidebarState(true);
+    setSidebarState(true);
 });
 
 const themeToggle = document.getElementById('theme-toggle');
-const darkIcon = document.getElementById('theme-icon-dark'); // Moon icon
-const lightIcon = document.getElementById('theme-icon-light'); // Sun icon
+const darkIcon = document.getElementById('theme-icon-dark');
+const lightIcon = document.getElementById('theme-icon-light');
 const htmlEl = document.documentElement;
 
 function setTheme(theme) {
     localStorage.setItem('theme', theme);
     
+    // Add smooth transition class
+    document.body.style.transition = 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+    
     if (theme === 'dark') {
-        // Dark theme: white button with black sun icon
         htmlEl.classList.add('dark');
         htmlEl.classList.remove('light');
         
-        // Update button styling for dark theme
-        themeToggle.className = 'p-3 rounded-full transition-colors duration-300 shadow-lg bg-white text-black hover:bg-gray-100';
+        themeToggle.className = 'p-3 rounded-full transition-all duration-500 shadow-lg bg-white text-black hover:bg-gray-100 transform hover:scale-110';
         
-        // Show sun icon (to toggle back to light), hide moon icon
         lightIcon.style.display = 'block';
         darkIcon.style.display = 'none';
         
     } else {
-        // Light theme: black button with white moon icon
         htmlEl.classList.remove('dark');
         htmlEl.classList.add('light');
         
-        // Update button styling for light theme
-        themeToggle.className = 'p-3 rounded-full transition-colors duration-300 shadow-lg bg-black text-white hover:bg-gray-800';
+        themeToggle.className = 'p-3 rounded-full transition-all duration-500 shadow-lg bg-black text-white hover:bg-gray-800 transform hover:scale-110';
         
-        // Show moon icon (to toggle to dark), hide sun icon
         darkIcon.style.display = 'block';
         lightIcon.style.display = 'none';
     }
+    
+    // Remove transition after animation
+    setTimeout(() => {
+        document.body.style.transition = '';
+    }, 600);
 }
 
 themeToggle.addEventListener('click', () => {
@@ -104,7 +124,7 @@ const savedTheme = localStorage.getItem('theme');
 const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 setTheme(savedTheme || (prefersDark ? 'dark' : 'light'));
 
-// --- CORRECTED APPLICATION LOGIC ---
+// --- APPLICATION LOGIC ---
 
 const configSection = document.getElementById('config-section');
 const downloadsSection = document.getElementById('downloads-section');
@@ -128,7 +148,6 @@ const configCancelBtn = document.getElementById('config-cancel-btn');
 const configConfirmBtn = document.getElementById('config-confirm-download-btn');
 const configTitle = document.getElementById('config-title');
 const configSummary = document.getElementById('config-summary');
-// MODIFIED: Reference to the new base filename input
 const configFilenameBase = document.getElementById('config-filename-base');
 const configThumbnail = document.getElementById('config-thumbnail');
 const videoFormatsTableBody = document.getElementById('video-formats-table-body');
@@ -142,11 +161,14 @@ const subtitlesToggle = document.getElementById('enable-subtitles');
 const subtitlesOptions = document.getElementById('subtitles-options');
 const postprocessingToggle = document.getElementById('enable-postprocessing');
 const postprocessingOptions = document.getElementById('postprocessing-options');
+const metadataToggle = document.getElementById('enable-metadata');
+const metadataOptions = document.getElementById('metadata-options');
 const presetsGroup = document.getElementById('presets-group');
 const allConfigInputs = configSection.querySelectorAll('input, select, button');
 
 function showConfigSection() {
     configSection.classList.remove('hidden');
+    configSection.classList.add('cinematic-enter');
     configSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     configContentLoading.style.display = 'block';
     configContentLoaded.style.display = 'none';
@@ -155,16 +177,11 @@ function showConfigSection() {
         <p class="mt-2 text-[var(--text-secondary-light)] dark:text-[var(--text-secondary-dark)]">Fetching video information...</p>`;
 }
 
-function hideConfigSection() {
-    configSection.classList.add('hidden');
-}
-
 configCloseBtn.addEventListener('click', hideConfigSection);
 configCancelBtn.addEventListener('click', hideConfigSection);
 configConfirmBtn.addEventListener('click', () => {
     startRealDownload();
     hideConfigSection();
-    // Show and scroll to the download queue
     downloadsSection.classList.remove('hidden');
     downloadsSection.scrollIntoView({ behavior: 'smooth' });
 });
@@ -185,6 +202,13 @@ postprocessingToggle.addEventListener('change', () => {
     postprocessingOptions.classList.toggle('hidden', !postprocessingToggle.checked);
     generateCommand();
 });
+
+if (metadataToggle && metadataOptions) {
+    metadataToggle.addEventListener('change', () => {
+        metadataOptions.classList.toggle('hidden', !metadataToggle.checked);
+        generateCommand();
+    });
+}
 
 function setupCheckboxToggle(checkboxId, dropdownId) {
     const checkbox = document.getElementById(checkboxId);
@@ -232,7 +256,6 @@ function setActivePreset(presetName) {
 }
 
 function applyPreset(presetName) {
-    // Clear previous selections first
     selectedVideoIds.clear();
     selectedAudioIds.clear();
     document.querySelectorAll('.format-table-row').forEach(row => row.classList.remove('selected'));
@@ -245,7 +268,6 @@ function applyPreset(presetName) {
     const extractAudio = document.getElementById('pp-extract-audio');
     if (extractAudio) extractAudio.checked = false;
     
-    // Logic for selecting best formats, used by multiple presets
     const selectBestFormats = () => {
         if (!currentVideoInfo) return;
 
@@ -266,21 +288,20 @@ function applyPreset(presetName) {
         case 'default':
             currentDownloadMode = 'both';
             document.getElementById('config-output-format').value = 'default';
-            selectBestFormats(); // Select best video and audio
+            selectBestFormats();
             break;
         case 'hq-mp4':
             currentDownloadMode = 'both';
             document.getElementById('config-output-format').value = 'mp4';
-            selectBestFormats(); // Also select best for this preset
+            selectBestFormats();
             break;
         case 'mp3':
             currentDownloadMode = 'audio';
             if (extractAudio) extractAudio.checked = true;
-            // Select best audio for MP3 preset
             const bestAudioIds = currentVideoInfo?.best_audio_ids || [];
             bestAudioIds.forEach(id => selectedAudioIds.add(id));
             document.querySelectorAll('#audio-formats-table-body tr').forEach(row => {
-                    if(selectedAudioIds.has(row.dataset.id)) row.classList.add('selected');
+                if(selectedAudioIds.has(row.dataset.id)) row.classList.add('selected');
             });
             break;
         case 'mkv':
@@ -290,7 +311,6 @@ function applyPreset(presetName) {
             break;
     }
     
-    // Scroll selected formats into view
     setTimeout(() => {
         const firstSelectedVideo = document.querySelector('#video-formats-table-body tr.selected');
         if (firstSelectedVideo) {
@@ -365,7 +385,6 @@ downloadModeGroup.addEventListener('click', (e) => {
 function generateCommand() {
     let command = 'yt-dlp';
 
-    // Helper to get value from an element if it exists
     const getValue = (id) => document.getElementById(id)?.value?.trim() || '';
     const getChecked = (id) => document.getElementById(id)?.checked || false;
 
@@ -389,6 +408,10 @@ function generateCommand() {
     }
     const finalFilename = `${getValue('config-filename-base') || '%(title)s'}.%(ext)s`;
     command += ` -o "${finalFilename}"`;
+    const dlPath = getValue('config-download-path');
+    if (dlPath) {
+        command += ` -P "${dlPath}"`;
+    }
 
     // --- Subtitles ---
     if (getChecked('enable-subtitles')) {
@@ -408,16 +431,17 @@ function generateCommand() {
 
     // --- Embedding and Metadata ---
     if (getChecked('pp-embed-thumbnail')) command += ' --embed-thumbnail';
-    if (getChecked('pp-embed-metadata')) command += ' --embed-metadata';
+    if ((metadataToggle && metadataToggle.checked) && getChecked('pp-embed-metadata')) command += ' --embed-metadata';
     if (getChecked('pp-add-chapters')) command += ' --add-chapters';
     if (getChecked('pp-embed-info-json')) command += ' --embed-info-json';
     if (getChecked('pp-xattrs')) command += ' --xattrs';
     
-    const parseMeta = getValue('pp-parse-metadata');
-    if (parseMeta) command += ` --parse-metadata "${parseMeta}"`;
-    
-    const replaceMeta = getValue('pp-replace-metadata');
-    if (replaceMeta) command += ` --replace-in-metadata "${replaceMeta}"`;
+    if (metadataToggle && metadataToggle.checked) {
+        const parseMeta = getValue('pp-parse-metadata');
+        if (parseMeta) command += ` --parse-metadata "${parseMeta}"`;
+        const replaceMeta = getValue('pp-replace-metadata');
+        if (replaceMeta) command += ` --replace-in-metadata "${replaceMeta}"`;
+    }
 
     // --- Post-processing ---
     if (getChecked('enable-postprocessing')) {
@@ -484,31 +508,26 @@ allConfigInputs.forEach(input => {
             setActivePreset('custom');
             generateCommand();
         });
-        // Use 'input' event for real-time update on text fields
         input.addEventListener('input', () => {
             setActivePreset('custom');
             generateCommand();
         });
     }
 });
+
 function parseCommandAndUpdateUI() {
     const command = finalCommandTextarea.value;
     if (!command) return;
 
-    // This is a simplified parser. A full implementation is extremely complex.
-    // It demonstrates the concept of two-way binding.
-    
-    // 1. Parse filename (-o "filename")
+    // Simplified parser for two-way binding
     const filenameMatch = command.match(/-o "([^"]+)"/);
     if (filenameMatch && filenameMatch[1]) {
         const fullFilename = filenameMatch[1];
-        // Check if it's different to prevent cursor jumping
         if (configFilenameBase.value !== fullFilename) {
             configFilenameBase.value = fullFilename;
         }
     }
 
-    // 2. Parse format (-f "format")
     const formatMatch = command.match(/-f "([^"]+)"/);
     if (formatMatch && formatMatch[1]) {
         const formatString = formatMatch[1];
@@ -519,7 +538,6 @@ function parseCommandAndUpdateUI() {
         selectedVideoIds = videoIds;
         selectedAudioIds = audioIds;
         
-        // Update UI selection
         document.querySelectorAll('#video-formats-table-body tr').forEach(row => {
             row.classList.toggle('selected', selectedVideoIds.has(row.dataset.id));
         });
@@ -528,33 +546,57 @@ function parseCommandAndUpdateUI() {
         });
     }
 
-    // 3. Parse boolean flags (e.g., --embed-thumbnail)
     document.getElementById('pp-embed-thumbnail').checked = /--embed-thumbnail/.test(command);
     document.getElementById('pp-embed-metadata').checked = /--embed-metadata/.test(command);
     document.getElementById('pp-add-chapters').checked = /--add-chapters/.test(command);
     document.getElementById('pp-extract-audio').checked = /-x/.test(command) || /--extract-audio/.test(command);
 
-    // 4. Parse merge format
     const mergeMatch = command.match(/--merge-output-format (\w+)/);
     if (mergeMatch && mergeMatch[1]) {
         document.getElementById('config-output-format').value = mergeMatch[1];
     }
 }
 
-// Add event listener for real-time parsing
 finalCommandTextarea.addEventListener('input', parseCommandAndUpdateUI);
 
 // --- API Functions ---
-async function fetchVideoInfo(url) {
-    try {
-        const response = await fetch(`${API_BASE_URL}/info?url=${encodeURIComponent(url)}`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const data = await response.json();
-        if (data.error) throw new Error(data.error);
-        return data;
-    } catch (error) {
-        console.error('Error fetching video info:', error);
-        throw error;
+async function fetchVideoInfo(url, retries = 3) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/info?url=${encodeURIComponent(url)}`);
+            
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                const error = new Error(errorData.error || `HTTP ${response.status}`);
+                error.status = response.status;
+                error.code = errorData.error_code;
+                throw error;
+            }
+            
+            const data = await response.json();
+            if (data.error) {
+                const error = new Error(data.error);
+                error.code = data.error_code;
+                throw error;
+            }
+            
+            return data;
+            
+        } catch (error) {
+            console.warn(`Attempt ${attempt}/${retries} failed:`, error);
+            
+            if (error.status === 404 || error.status === 403 || error.code === 'UNSUPPORTED_URL') {
+                throw error;
+            }
+            
+            if (attempt === retries) {
+                throw error;
+            }
+            
+            const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+            console.log(`Waiting ${delay}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
     }
 }
 
@@ -588,11 +630,9 @@ let activeDownloadPolling = new Map();
 function buildDownloadOptions() {
     const advancedSettings = JSON.parse(localStorage.getItem('yt-dls-advanced-settings') || '{}');
     
-    // Helper to get value from an element if it exists
     const getValue = (id) => document.getElementById(id)?.value || null;
     const getChecked = (id) => document.getElementById(id)?.checked || false;
 
-    // Determine format code
     let formatCode = 'bestvideo+bestaudio/best';
     if (currentDownloadMode === 'both') {
         const video = selectedVideoIds.size > 0 ? [...selectedVideoIds].join('+') : 'bestvideo';
@@ -609,6 +649,7 @@ function buildDownloadOptions() {
         formatCode: formatCode,
         filename: getValue('config-filename-base'),
         outputFormat: getValue('config-output-format'),
+        downloadPath: getValue('config-download-path'),
         
         // Subtitles
         enableSubtitles: getChecked('enable-subtitles'),
@@ -631,13 +672,13 @@ function buildDownloadOptions() {
 
         // Embedding
         embedThumbnail: getChecked('pp-embed-thumbnail'),
-        embedMetadata: getChecked('pp-embed-metadata'),
+    embedMetadata: getChecked('pp-embed-metadata'),
         addChapters: getChecked('pp-add-chapters'),
         embedInfoJson: getChecked('pp-embed-info-json'),
         
         // Metadata & Correction
-        parseMetadata: getValue('pp-parse-metadata'),
-        replaceInMetadata: getValue('pp-replace-metadata'),
+    parseMetadata: (metadataToggle && metadataToggle.checked) ? getValue('pp-parse-metadata') : null,
+    replaceInMetadata: (metadataToggle && metadataToggle.checked) ? getValue('pp-replace-metadata') : null,
         xattrs: getChecked('pp-xattrs'),
         fixup: getValue('pp-fixup'),
 
@@ -646,7 +687,6 @@ function buildDownloadOptions() {
         forceKeyframes: getChecked('pp-force-keyframes'),
         concatPlaylist: getValue('pp-concat-playlist'),
         
-        // Overwrite is a base option
         overwrite: getChecked('pp-overwrite'),
 
         // Advanced Settings from settings page
@@ -656,23 +696,72 @@ function buildDownloadOptions() {
 
 async function startRealDownload() {
     try {
-        const options = buildDownloadOptions();
-        const response = await startDownload(options);
-        
-        addDownload({
-            title: configTitle.textContent,
-            thumbnail: configThumbnail.src,
-            downloadId: response.download_id
-        });
-        
-        if (downloadsContainer.children.length > 1) {
+        const isBatch = selectedPlaylistVideoUrls.size > 0 && currentPlaylistInfo !== null;
+        const urlsToDownload = isBatch ? [...selectedPlaylistVideoUrls] : [currentUrl];
+
+        showNotification(`Starting download for ${urlsToDownload.length} item(s)...`, 'info');
+
+        for (const url of urlsToDownload) {
+            const options = buildDownloadOptions();
+            options.url = url;
+
+            let title, thumbnail;
+            if (isBatch) {
+                const videoEntry = currentPlaylistInfo.entries.find(v => v.url === url);
+                title = videoEntry?.title || 'Playlist Video';
+                thumbnail = videoEntry?.thumbnail || (currentVideoInfo?.thumbnail || '');
+            } else {
+                title = currentVideoInfo?.title || 'Video Download';
+                thumbnail = currentVideoInfo?.thumbnail || '';
+            }
+
+            const response = await startDownload(options);
+            addDownload({
+                title: title,
+                thumbnail: thumbnail,
+                downloadId: response.download_id
+            });
+        }
+
+        if (downloadsContainer.children.length > 0) {
             clearCompletedBtn.classList.remove('hidden');
         }
-        
+
+        if (isBatch) {
+            selectedPlaylistVideoUrls.clear();
+            currentPlaylistInfo = null;
+        }
+
     } catch (error) {
-        console.error('Error starting download:', error);
-        showNotification(`Failed to start download: ${error.message}`, 'error');
+        showNotification(`Failed to start download: ${handleNetworkError(error)}`, 'error');
     }
+}
+
+function togglePlaylistItem(row, checkbox) {
+    const url = row.dataset.url;
+    if (checkbox.checked) {
+        selectedPlaylistVideoUrls.add(url);
+        row.classList.add('selected');
+    } else {
+        selectedPlaylistVideoUrls.delete(url);
+        row.classList.remove('selected');
+    }
+    updatePlaylistSelectionCount();
+}
+
+function hideConfigSection() {
+    configSection.classList.remove('cinematic-enter');
+    configSection.classList.add('cinematic-exit');
+    
+    setTimeout(() => {
+        configSection.classList.add('hidden');
+        configSection.classList.remove('cinematic-exit');
+        if (currentPlaylistInfo) {
+            selectedPlaylistVideoUrls.clear();
+            currentPlaylistInfo = null;
+            hidePlaylistView();
+        }
+    }, 600);
 }
 
 function stopPolling(downloadId) {
@@ -698,13 +787,9 @@ async function updateDownloadStatus(downloadId, downloadItem) {
         const data = await response.json();
 
         // Get DOM elements
-        const statusText = downloadItem.querySelector('.status-text');
-        const videoProgressBar = downloadItem.querySelector('.video-progress-bar');
-        const audioProgressBar = downloadItem.querySelector('.audio-progress-bar');
-        const videoProgressText = downloadItem.querySelector('.video-progress-text');
-        const audioProgressText = downloadItem.querySelector('.audio-progress-text');
-        const videoContainer = downloadItem.querySelector('.video-progress-container');
-        const audioContainer = downloadItem.querySelector('.audio-progress-container');
+    const statusText = downloadItem.querySelector('.status-text');
+    const singleProgressBar = downloadItem.querySelector('.progress-bar');
+    const singleProgressText = downloadItem.querySelector('.progress-text');
         const speedText = downloadItem.querySelector('.speed-text');
         const etaText = downloadItem.querySelector('.eta-text');
         const sizeText = downloadItem.querySelector('.size-text');
@@ -715,34 +800,10 @@ async function updateDownloadStatus(downloadId, downloadItem) {
         const pauseIcon = downloadItem.querySelector('.pause-icon');
         const playIcon = downloadItem.querySelector('.play-icon');
 
-        // Handle dual progress bars
-        if (data.video_progress) {
-            const vp = data.video_progress;
-            videoProgressBar.style.width = `${Math.max(vp.progress || 0, 0)}%`;
-            videoProgressText.textContent = `${(vp.progress || 0).toFixed(1)}%`;
-            
-            if (vp.status === 'downloading') {
-                videoContainer.style.display = 'block';
-            } else if (vp.status === 'waiting' || vp.status === 'completed') {
-                videoContainer.style.display = vp.status === 'completed' ? 'block' : 'none';
-            }
-        } else {
-            videoContainer.style.display = 'none';
-        }
-
-        if (data.audio_progress) {
-            const ap = data.audio_progress;
-            audioProgressBar.style.width = `${Math.max(ap.progress || 0, 0)}%`;
-            audioProgressText.textContent = `${(ap.progress || 0).toFixed(1)}%`;
-            
-            if (ap.status === 'downloading') {
-                audioContainer.style.display = 'block';
-            } else if (ap.status === 'waiting' || ap.status === 'completed') {
-                audioContainer.style.display = ap.status === 'completed' ? 'block' : 'none';
-            }
-        } else {
-            audioContainer.style.display = 'none';
-        }
+    // Single progress bar update (aggregate)
+    const pct = Math.max(Math.min(data.progress || 0, 100), 0);
+    if (singleProgressBar) singleProgressBar.style.width = `${pct}%`;
+    if (singleProgressText) singleProgressText.textContent = `${pct.toFixed(1)}%`;
 
         // Update real-time statistics
         if (data.speed && data.speed > 0) {
@@ -762,9 +823,9 @@ async function updateDownloadStatus(downloadId, downloadItem) {
         }
 
         // Update file size information
-        if (data.total_bytes > 0) {
+        if ((data.total_bytes || 0) > 0) {
             const downloadedStr = formatFileSize(data.downloaded_bytes || 0);
-            const totalStr = formatFileSize(data.total_bytes);
+            const totalStr = formatFileSize(data.total_bytes || 0);
             sizeText.textContent = `${downloadedStr} / ${totalStr}`;
         } else if (data.downloaded_bytes > 0) {
             sizeText.textContent = formatFileSize(data.downloaded_bytes);
@@ -772,8 +833,7 @@ async function updateDownloadStatus(downloadId, downloadItem) {
             sizeText.textContent = '... / ...';
         }
 
-        // Handle different download states
-        const isTerminalState = ['completed', 'failed', 'cancelled'].includes(data.status);
+    const isTerminalState = ['completed', 'failed', 'cancelled'].includes(data.status);
         
         if (isTerminalState) {
             stopPolling(downloadId);
@@ -783,10 +843,8 @@ async function updateDownloadStatus(downloadId, downloadItem) {
             downloadLogBtn.classList.remove('hidden');
             
             if (data.status === 'completed') {
-                videoProgressBar.style.width = '100%';
-                audioProgressBar.style.width = '100%';
-                videoProgressText.textContent = '100%';
-                audioProgressText.textContent = '100%';
+                if (singleProgressBar) singleProgressBar.style.width = '100%';
+                if (singleProgressText) singleProgressText.textContent = '100%';
             }
         } else {
             pauseResumeBtn.classList.remove('hidden');
@@ -795,9 +853,9 @@ async function updateDownloadStatus(downloadId, downloadItem) {
             downloadLogBtn.classList.add('hidden');
         }
 
-        // Update progress bar colors based on status
-        const progressBars = [videoProgressBar, audioProgressBar];
-        progressBars.forEach(bar => {
+        // Update progress bar colors
+    const progressBars = [singleProgressBar];
+    progressBars.forEach(bar => {
             bar.classList.remove('bg-red-500', 'bg-yellow-500', 'bg-green-400', 'bg-white', 'bg-black');
             if (data.status === 'paused') {
                 bar.classList.add(document.documentElement.classList.contains('dark') ? 'bg-white' : 'bg-black');
@@ -813,14 +871,14 @@ async function updateDownloadStatus(downloadId, downloadItem) {
         // Update status text and button states
         switch (data.status) {
             case 'downloading':
-                statusText.innerHTML = `<span class="font-semibold text-blue-400">Status:</span> Downloading...`;
+                statusText.innerHTML = `<span class="font-semibold text-blue-400">Downloading...</span>`;
                 pauseIcon.classList.remove('hidden');
                 playIcon.classList.add('hidden');
                 pauseResumeBtn.disabled = false;
                 break;
                 
             case 'processing':
-                statusText.innerHTML = `<span class="font-semibold text-cyan-400">Status:</span> Processing...`;
+                statusText.innerHTML = `<span class="font-semibold text-cyan-400">Processing...</span>`;
                 pauseResumeBtn.disabled = true;
                 break;
                 
@@ -836,18 +894,18 @@ async function updateDownloadStatus(downloadId, downloadItem) {
                 break;
                 
             case 'cancelled':
-                statusText.innerHTML = `<span class="font-semibold text-yellow-400">⏸ Cancelled</span>`;
+                statusText.innerHTML = `<span class="font-semibold text-yellow-400">⸘ Cancelled</span>`;
                 break;
                 
             case 'paused':
-                statusText.innerHTML = `<span class="font-semibold text-yellow-400">Status:</span> Paused`;
+                statusText.innerHTML = `<span class="font-semibold text-yellow-400">Paused</span>`;
                 pauseIcon.classList.add('hidden');
                 playIcon.classList.remove('hidden');
                 pauseResumeBtn.disabled = false;
                 break;
                 
             default:
-                statusText.innerHTML = `<span class="font-semibold">Status:</span> ${data.status}...`;
+                statusText.innerHTML = `<span class="font-semibold">${data.status}...</span>`;
                 pauseResumeBtn.disabled = true;
         }
 
@@ -884,19 +942,18 @@ function addDownload(options) {
     clone.id = `download-${options.downloadId}`;
     clone.style.display = 'flex';
     clone.dataset.downloadId = options.downloadId;
-    clone.dataset.retryCount = '0'; // Initialize retry counter
+    clone.dataset.retryCount = '0';
     
     clone.querySelector('h3').textContent = options.title || `Download`;
     clone.querySelector('img').src = options.thumbnail || `https://placehold.co/128x72/1a1a1a/e5e5e5?text=...`;
     downloadsContainer.prepend(clone);
     
-    // Smooth entrance animation
     setTimeout(() => {
         clone.classList.remove('opacity-0', 'translate-y-4');
         clone.classList.add('opacity-100', 'translate-y-0');
     }, 10);
 
-    // FIXED: Cancel button event listener
+    // Cancel button event listener
     clone.querySelector('.cancel-btn').addEventListener('click', async () => {
         try {
             const response = await fetch(`${API_BASE_URL}/download/${options.downloadId}/cancel`, { 
@@ -916,7 +973,7 @@ function addDownload(options) {
         }
     });
 
-    // FIXED: Remove button event listener  
+    // Remove button event listener  
     clone.querySelector('.remove-btn').addEventListener('click', async () => {
         try {
             stopPolling(options.downloadId);
@@ -926,30 +983,26 @@ function addDownload(options) {
                 headers: { 'Content-Type': 'application/json' }
             });
             
-            // Remove from UI regardless of server response
             clone.classList.add('opacity-0', 'scale-95');
             setTimeout(() => clone.remove(), 300);
             
         } catch (error) {
             console.warn('Remove request failed:', error);
-            // Still remove from UI
             clone.classList.add('opacity-0', 'scale-95');
             setTimeout(() => clone.remove(), 300);
         }
     });
 
-    // FIXED: Pause/Resume button event listener
+    // Pause/Resume button event listener
     clone.querySelector('.pause-resume-btn').addEventListener('click', async (e) => {
         const btn = e.currentTarget;
         const statusText = clone.querySelector('.status-text');
         const pauseIcon = btn.querySelector('.pause-icon');
         const playIcon = btn.querySelector('.play-icon');
         
-        // Determine current state and target action
         const isCurrentlyPaused = !playIcon.classList.contains('hidden');
         const action = isCurrentlyPaused ? 'resume' : 'pause';
         
-        // Optimistic UI update
         btn.disabled = true;
         statusText.innerHTML = `<span class="font-semibold text-yellow-400">Status:</span> ${action === 'pause' ? 'Pausing' : 'Resuming'}...`;
         
@@ -963,7 +1016,6 @@ function addDownload(options) {
                 const errorData = await response.json();
                 showNotification(`Failed to ${action}: ${errorData.error}`, 'error');
                 
-                // Revert optimistic UI changes
                 btn.disabled = false;
                 if (isCurrentlyPaused) {
                     pauseIcon.classList.add('hidden');
@@ -974,7 +1026,6 @@ function addDownload(options) {
                 }
             } else {
                 showNotification(`Download ${action}d`, 'success');
-                // The polling will update the UI to the correct state
             }
         } catch (error) {
             console.error(`${action} request failed:`, error);
@@ -982,13 +1033,12 @@ function addDownload(options) {
             btn.disabled = false;
         }
         
-        // Re-enable button after a short delay
         setTimeout(() => {
             btn.disabled = false;
         }, 1000);
     });
     
-    // Log button functionality (unchanged but included for completeness)
+    // Log button functionality
     const logContainer = clone.querySelector('.log-container');
     const logContent = clone.querySelector('.log-content');
     clone.querySelector('.log-btn').addEventListener('click', async () => {
@@ -1013,7 +1063,6 @@ function addDownload(options) {
         }
     });
 
-    // Initial status
     clone.querySelector('.status-text').innerHTML = `<span class="font-semibold text-blue-400">Status:</span> Initializing...`;
     
     // Download log button functionality
@@ -1042,7 +1091,7 @@ function addDownload(options) {
         }
     });
 
-    // Start polling for updates every 1000ms (reduced from 500ms to reduce server load)
+    // Start polling for updates every 1000ms
     const statusInterval = setInterval(() => updateDownloadStatus(options.downloadId, clone), 1000);
     activeDownloadPolling.set(options.downloadId, statusInterval);
 }
@@ -1062,7 +1111,6 @@ async function fetchVideoInfoWithErrorHandling(url) {
 
 function showNotification(message, type = 'info') {
     const notification = document.createElement('div');
-    // The only change is here: z-50 is now z-[9999]
     notification.className = `fixed top-20 right-4 z-[9999] p-4 rounded-lg shadow-lg transition-all duration-300 transform translate-x-full`;
     const colors = { success: 'bg-green-500', error: 'bg-red-500', info: 'bg-blue-500' };
     notification.classList.add(colors[type] || 'bg-blue-500', 'text-white');
@@ -1082,120 +1130,36 @@ async function triggerMetadataFetch() {
         setTimeout(() => urlInput.classList.remove('ring-2', 'ring-red-500'), 2000);
         return;
     }
-    
+
     currentUrl = urlInput.value.trim();
     showConfigSection();
+    configContentLoading.innerHTML = `
+        <div role="status" class="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-[var(--primary-green)] border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
+        <p class="mt-2 text-[var(--text-secondary-light)] dark:text-[var(--text-secondary-dark)]">Analyzing URL...</p>`;
 
     try {
-        const videoInfo = await fetchVideoInfoWithErrorHandling(currentUrl);
-        currentVideoInfo = videoInfo;
-        
-        configTitle.textContent = videoInfo.title || 'Unknown Title';
-        configFilenameBase.value = (videoInfo.suggested_filename || `${(videoInfo.title || 'video')}`).replace(/\.%\(ext\)s$/, '');
-        configSummary.textContent = videoInfo.description || 'No description available.';
-        configThumbnail.src = videoInfo.thumbnail || 'https://placehold.co/256x144/1a1a1a/e5e5e5?text=No+Thumbnail';
-        
-        videoFormatsTableBody.innerHTML = '';
-        audioFormatsTableBody.innerHTML = '';
-        subtitlesTableBody.innerHTML = '';
-        selectedVideoIds.clear();
-        selectedAudioIds.clear();
+        const info = await fetchVideoInfoWithErrorHandling(currentUrl);
 
-        const bestVideoIds = videoInfo.best_video_ids || [];
-        const bestAudioIds = videoInfo.best_audio_ids || [];
-
-        if (videoInfo.video_formats && videoInfo.video_formats.length > 0) {
-            const firstBestVideoCodec = videoInfo.video_formats.find(f => bestVideoIds.includes(f.id))?.vcodec;
-            videoInfo.video_formats.forEach(format => {
-                const isBest = bestVideoIds.includes(format.id);
-                const row = document.createElement('tr');
-                row.className = 'format-table-row cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors';
-                row.dataset.id = format.id;
-                row.dataset.type = 'video';
-                if (isBest) row.classList.add('best-row');
-                
-                // FIXED: Removed tilde from bitrate
-                const bitrate = format.vbr ? `${Math.round(format.vbr)} kbps` : (format.tbr ? `${Math.round(format.tbr)} kbps` : 'N/A');
-                const codecClass = (isBest && format.vcodec !== firstBestVideoCodec) ? 'diff-codec' : '';
-                // FIXED: Conditionally add tilde to filesize
-                const fileSizeStr = `${format.filesize_is_approx ? '~' : ''}${formatFileSize(format.filesize)}`;
-
-                row.innerHTML = `
-                    <td class="p-2 font-mono text-xs">${format.id}</td>
-                    <td class="p-2">${format.ext}</td>
-                    <td class="p-2">${format.resolution || 'N/A'}</td>
-                    <td class="p-2">${bitrate}</td>
-                    <td class="p-2">${fileSizeStr}</td>
-                    <td class="p-2 truncate ${codecClass}" title="${format.vcodec}">${format.vcodec}</td>
-                `;
-                videoFormatsTableBody.appendChild(row);
-            });
+        if (info._type === 'playlist') {
+            currentPlaylistInfo = info;
+            // Hide the config section, and only show the playlist view AFTER it's hidden
+            configSection.classList.remove('cinematic-enter');
+            configSection.classList.add('cinematic-exit');
+            setTimeout(() => {
+                configSection.classList.add('hidden');
+                configSection.classList.remove('cinematic-exit');
+                showPlaylistViewUnderInput(info); // Show playlist view inside the callback
+            }, 600);
         } else {
-            videoFormatsTableBody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-400">No video formats available.</td></tr>';
+            currentVideoInfo = info;
+            populateConfigView(info, false);
         }
-
-        if (videoInfo.audio_formats && videoInfo.audio_formats.length > 0) {
-                const firstBestAudioCodec = videoInfo.audio_formats.find(f => bestAudioIds.includes(f.id))?.acodec;
-            videoInfo.audio_formats.forEach(format => {
-                const isBest = bestAudioIds.includes(format.id);
-                const row = document.createElement('tr');
-                row.className = 'format-table-row cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors';
-                row.dataset.id = format.id;
-                row.dataset.type = 'audio';
-                if (isBest) row.classList.add('best-row');
-                
-                const bitrate = format.abr ? `${Math.round(format.abr)} kbps` : 'N/A';
-                const codecClass = (isBest && format.acodec !== firstBestAudioCodec) ? 'diff-codec' : '';
-                const fileSizeStr = `${format.filesize_is_approx ? '~' : ''}${formatFileSize(format.filesize)}`;
-
-                row.innerHTML = `
-                    <td class="p-2 font-mono text-xs">${format.id}</td>
-                    <td class="p-2">${format.ext}</td>
-                    <td class="p-2">${bitrate}</td>
-                    <td class="p-2">${fileSizeStr}</td>
-                    <td class="p-2 truncate ${codecClass}" title="${format.acodec}">${format.acodec}</td>
-                `;
-                audioFormatsTableBody.appendChild(row);
-            });
-        } else {
-            audioFormatsTableBody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-400">No audio-only formats available.</td></tr>';
-        }
-
-        const subtitleLangSelect = document.getElementById('config-subtitle-lang');
-        subtitleLangSelect.innerHTML = '<option value="none">No Subtitles</option><option value="all">All Languages</option>';
-        if (videoInfo.subtitle_languages && videoInfo.subtitle_languages.length > 0) {
-            videoInfo.subtitle_languages.forEach(lang => {
-                const option = new Option(lang, lang);
-                subtitleLangSelect.add(option);
-            });
-        }
-        if (videoInfo.subtitles && videoInfo.subtitles.length > 0) {
-                videoInfo.subtitles.forEach(subtitle => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td class="p-2">${subtitle.lang}</td>
-                    <td class="p-2">${subtitle.name}</td>
-                    <td class="p-2">${subtitle.auto ? 'Yes' : 'No'}</td>
-                `;
-                subtitlesTableBody.appendChild(row);
-            });
-        } else {
-            subtitlesTableBody.innerHTML = '<tr><td colspan="3" class="p-4 text-center text-gray-400">No subtitles available.</td></tr>';
-        }
-
-        configContentLoading.style.display = 'none';
-        configContentLoaded.style.display = 'block';
-        setActivePreset('default');
-        applyPreset('default');
-        showNotification('Video information loaded successfully!', 'success');
-        
     } catch (error) {
-        configContentLoading.innerHTML = `<div class="text-center text-red-500 p-4"><p class="font-semibold">Error fetching video information</p><p class="text-sm mt-1">${error.message}</p><button class="mt-4 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600" onclick="hideConfigSection()">Close</button></div>`;
-        showNotification('Failed to load video information', 'error');
+        configContentLoading.innerHTML = `<div class="text-center text-red-500 p-4"><p class="font-semibold">Error Fetching Information</p><p class="text-sm mt-1">${handleNetworkError(error)}</p><button class="mt-4 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600" onclick="hideConfigSection()">Close</button></div>`;
     }
 
     urlInput.value = '';
-}
+}   
 
 function handleFormatSelection(e) {
     const row = e.target.closest('tr.format-table-row');
@@ -1224,11 +1188,136 @@ function handleFormatSelection(e) {
     generateCommand();
 }
 
+function showPlaylistView(playlistInfo) {
+    mainInterfaceSections.forEach(el => el.style.display = 'none');
+    playlistSection.classList.remove('hidden');
+    playlistSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    document.getElementById('playlist-title').textContent = playlistInfo.title || 'Untitled Playlist';
+    document.getElementById('playlist-video-count').textContent = `${playlistInfo.entries.length} videos`;
+
+    const itemsBody = document.getElementById('playlist-items-body');
+    const itemTemplate = document.getElementById('playlist-item-template');
+    itemsBody.innerHTML = '';
+    selectedPlaylistVideoUrls.clear();
+
+    playlistInfo.entries.forEach((video, index) => {
+        const itemClone = itemTemplate.content.cloneNode(true);
+        const row = itemClone.querySelector('.playlist-item-row');
+        
+        row.id = `playlist-item-${video.id}`;
+        row.dataset.url = video.url;
+        
+        const thumbnail = row.querySelector('.playlist-item-thumbnail');
+        if (video.thumbnail) {
+            thumbnail.src = video.thumbnail;
+            thumbnail.alt = `Thumbnail for ${video.title}`;
+        } else {
+            thumbnail.src = 'https://placehold.co/120x68/1a1a1a/e5e5e5?text=No+Image';
+            thumbnail.alt = 'No thumbnail available';
+        }
+        
+        thumbnail.addEventListener('error', (e) => {
+            e.target.src = 'https://placehold.co/120x68/1a1a1a/e5e5e5?text=No+Image';
+        });
+        
+        row.querySelector('.playlist-item-title').textContent = video.title || 'Untitled Video';
+        row.querySelector('.playlist-item-id').textContent = `ID: ${video.id}`;
+        row.querySelector('.playlist-item-duration').textContent = formatTime(video.duration);
+        
+        itemsBody.appendChild(itemClone);
+    });
+
+    updatePlaylistSelectionCount();
+    showNotification(`Loaded playlist with ${playlistInfo.entries.length} videos`, 'success');
+}
+
+function showPlaylistViewUnderInput(playlistInfo) {
+    // Keep main interface visible but show playlist under input
+    playlistSection.classList.remove('hidden');
+    playlistSection.classList.add('playlist-under-input');
+    
+    // Add smooth transition with cinematic effect
+    playlistSection.style.transform = 'translateY(-20px) scale(0.95)';
+    playlistSection.style.opacity = '0';
+    
+    setTimeout(() => {
+        playlistSection.style.transform = 'translateY(0) scale(1)';
+        playlistSection.style.opacity = '1';
+    }, 50);
+
+    document.getElementById('playlist-title').textContent = playlistInfo.title || 'Untitled Playlist';
+    document.getElementById('playlist-video-count').textContent = `${playlistInfo.entries.length} videos`;
+
+    const itemsBody = document.getElementById('playlist-items-body');
+    const itemTemplate = document.getElementById('playlist-item-template');
+    itemsBody.innerHTML = '';
+    selectedPlaylistVideoUrls.clear();
+
+    playlistInfo.entries.forEach((video, index) => {
+        const itemClone = itemTemplate.content.cloneNode(true);
+        const row = itemClone.querySelector('.playlist-item-row');
+        
+        row.id = `playlist-item-${video.id}`;
+        row.dataset.url = video.url;
+        
+        const thumbnail = row.querySelector('.playlist-item-thumbnail');
+        if (video.thumbnail) {
+            thumbnail.src = video.thumbnail;
+            thumbnail.alt = `Thumbnail for ${video.title}`;
+        } else {
+            thumbnail.src = 'https://placehold.co/120x68/1a1a1a/e5e5e5?text=No+Image';
+            thumbnail.alt = 'No thumbnail available';
+        }
+        
+        thumbnail.addEventListener('error', (e) => {
+            e.target.src = 'https://placehold.co/120x68/1a1a1a/e5e5e5?text=No+Image';
+        });
+        
+        row.querySelector('.playlist-item-title').textContent = video.title || 'Untitled Video';
+        row.querySelector('.playlist-item-id').textContent = `ID: ${video.id}`;
+        row.querySelector('.playlist-item-duration').textContent = formatTime(video.duration);
+        
+        itemsBody.appendChild(itemClone);
+    });
+
+    updatePlaylistSelectionCount();
+    showNotification(`Loaded playlist with ${playlistInfo.entries.length} videos`, 'success');
+}
+
+function hidePlaylistView() {
+    playlistSection.style.transform = 'translateY(-20px) scale(0.95)';
+    playlistSection.style.opacity = '0';
+    
+    setTimeout(() => {
+        playlistSection.classList.add('hidden');
+        playlistSection.classList.remove('playlist-under-input');
+        playlistSection.style.transform = '';
+        playlistSection.style.opacity = '';
+        
+        mainInterfaceSections.forEach(el => {
+             el.style.display = el.id === 'show-downloads-btn' ? 'inline-flex' : 'block';
+        });
+        document.querySelector('#description-section').style.display = 'block'
+        document.querySelector('#input-section').style.display = 'block'
+    }, 300);
+}
+
+function updatePlaylistSelectionCount() {
+    const count = selectedPlaylistVideoUrls.size;
+    document.getElementById('playlist-selection-count').textContent = `${count} video(s) selected`;
+    document.getElementById('playlist-header-checkbox').checked = count > 0 && count === currentPlaylistInfo.entries.length;
+
+    const configureBtn = document.getElementById('playlist-configure-btn');
+    configureBtn.disabled = count === 0;
+}
+
 videoFormatsTableBody.addEventListener('click', handleFormatSelection);
 audioFormatsTableBody.addEventListener('click', handleFormatSelection);
 urlInput.addEventListener('keypress', (e) => e.key === 'Enter' && triggerMetadataFetch());
 fetchBtn.addEventListener('click', triggerMetadataFetch);
 
+// DOMContentLoaded event listener with playlist handlers
 document.addEventListener('DOMContentLoaded', async () => {
     console.log("Page loaded. Checking for existing downloads...");
     try {
@@ -1236,18 +1325,97 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!response.ok) throw new Error("Could not connect to backend.");
         const data = await response.json();
         if (data.downloads && data.downloads.length > 0) {
-            // descriptionSection.style.display = 'none'; // Keep description visible
             clearCompletedBtn.classList.remove('hidden');
             data.downloads.sort((a, b) => new Date(b.started_at) - new Date(a.started_at));
             data.downloads.forEach(d => addDownload({ title: d.filename || d.url, thumbnail: '', downloadId: d.download_id }));
             showNotification(`Restored ${data.downloads.length} active download(s).`, 'info');
         }
     } catch (error) {
-        console.error("Error restoring downloads:", error);
-        showNotification(error.message, 'error');
+        console.error("Failed to restore downloads:", error);
     }
     
-    clearCompletedBtn.addEventListener('click', () => {
+    // Enhanced Playlist functionality
+    const playlistItemsBody = document.getElementById('playlist-items-body');
+    
+    if (playlistItemsBody) {
+        playlistItemsBody.addEventListener('click', (e) => {
+            const row = e.target.closest('.playlist-item-row');
+            if (!row || !row.dataset.url) return;
+
+            const checkbox = row.querySelector('.playlist-item-checkbox');
+            if (!checkbox) return;
+            
+            if (e.target.tagName !== 'INPUT') {
+                checkbox.checked = !checkbox.checked;
+            }
+
+            togglePlaylistItem(row, checkbox);
+        });
+    }
+
+    document.getElementById('playlist-back-btn')?.addEventListener('click', () => {
+        hidePlaylistView();
+        currentPlaylistInfo = null;
+        selectedPlaylistVideoUrls.clear();
+    });
+
+    document.getElementById('playlist-select-all-btn')?.addEventListener('click', () => {
+        playlistItemsBody?.querySelectorAll('.playlist-item-row').forEach(row => {
+            const checkbox = row.querySelector('.playlist-item-checkbox');
+            if (checkbox && row.dataset.url) {
+                checkbox.checked = true;
+                selectedPlaylistVideoUrls.add(row.dataset.url);
+                row.classList.add('selected');
+            }
+        });
+        updatePlaylistSelectionCount();
+    });
+
+    document.getElementById('playlist-deselect-all-btn')?.addEventListener('click', () => {
+        playlistItemsBody?.querySelectorAll('.playlist-item-row').forEach(row => {
+            const checkbox = row.querySelector('.playlist-item-checkbox');
+            if (checkbox) {
+                checkbox.checked = false;
+                row.classList.remove('selected');
+            }
+        });
+        selectedPlaylistVideoUrls.clear();
+        updatePlaylistSelectionCount();
+    });
+
+    document.getElementById('playlist-header-checkbox')?.addEventListener('change', (e) => {
+        if (e.target.checked) {
+            document.getElementById('playlist-select-all-btn')?.click();
+        } else {
+            document.getElementById('playlist-deselect-all-btn')?.click();
+        }
+    });
+
+    document.getElementById('playlist-configure-btn')?.addEventListener('click', async () => {
+        if (selectedPlaylistVideoUrls.size === 0) return;
+
+        const firstUrl = selectedPlaylistVideoUrls.values().next().value;
+
+        hidePlaylistView();
+        showConfigSection();
+        configContentLoading.innerHTML = `
+            <div role="status" class="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-[var(--primary-green)] border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
+            <p class="mt-2 text-[var(--text-secondary-light)] dark:text-[var(--text-secondary-dark)]">Fetching details for batch config...</p>`;
+
+        try {
+            const videoInfo = await fetchVideoInfo(firstUrl);
+            populateConfigView(videoInfo, true);
+        } catch (error) {
+            configContentLoading.innerHTML = `
+                <div class="text-center text-red-500 p-4">
+                    <p class="font-semibold">Error fetching video details</p>
+                    <p class="text-sm mt-1">${handleNetworkError(error)}</p>
+                    <button class="mt-4 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600" onclick="hideConfigSection()">Close</button>
+                </div>`;
+        }
+    });
+    
+    document.getElementById('clear-completed-btn').addEventListener('click', () => {
         let clearedCount = 0;
         document.querySelectorAll('#downloads-container > div[id^="download-"]').forEach(item => {
             const statusText = item.querySelector('.status-text')?.textContent.toLowerCase() || '';
@@ -1269,7 +1437,6 @@ const extractAudioOptions = document.getElementById('extract-audio-options');
 if (extractAudioCheck && extractAudioOptions) {
     extractAudioCheck.addEventListener('change', () => {
         extractAudioOptions.classList.toggle('hidden', !extractAudioCheck.checked);
-        // If enabling extract audio, also enable post-processing
         if (extractAudioCheck.checked) {
             postprocessingToggle.checked = true;
             postprocessingOptions.classList.remove('hidden');
@@ -1296,6 +1463,31 @@ document.addEventListener('error', (e) => {
     }
 }, true);
 
+function handleApiError(error, context = 'API request') {
+    console.error(`${context} failed:`, error);
+    
+    if (error.message.includes('Failed to fetch')) {
+        return 'Cannot connect to backend server. Please ensure the backend is running on http://localhost:5000';
+    }
+    
+    if (error.status) {
+        switch (error.status) {
+            case 403:
+                return 'Access forbidden - This content may be geo-blocked or require authentication. Try using a VPN.';
+            case 404:
+                return 'Content not available - The video may be private, deleted, or geo-blocked.';
+            case 429:
+                return 'Rate limited - Please wait a moment before trying again.';
+            case 500:
+                return 'Server error - Please try again in a few moments.';
+            default:
+                return `HTTP ${error.status}: ${error.message}`;
+        }
+    }
+    
+    return error.message || 'An unexpected error occurred';
+}
+
 function formatTime(seconds) {
     if (seconds === null || isNaN(seconds) || seconds < 0) return '...';
     const h = Math.floor(seconds / 3600);
@@ -1311,14 +1503,13 @@ function formatFileSize(bytes) {
     if (!bytes || bytes === 0) return 'N/A';
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    // MODIFIED: Use toFixed(2) for better precision on smaller files
     return `${(bytes / Math.pow(1024, i)).toFixed(i < 2 ? 0 : 2)} ${sizes[i]}`;
 }
-// --- Settings Page Logic (from settings.js) ---
+
+// Settings Page Logic
 document.addEventListener('DOMContentLoaded', () => {
     const settingsForm = document.getElementById('settings-form');
 
-    // Only run this code if we are on the settings page
     if (settingsForm) {
         const saveBtn = document.getElementById('save-settings-btn');
         const listImpersonateBtn = document.getElementById('list-impersonate-btn');
@@ -1328,7 +1519,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const SETTINGS_KEY = 'yt-dls-advanced-settings';
 
-        // --- Settings Persistence ---
         function saveSettings(showSuccessNotification = true) {
             const settings = {};
             const formData = new FormData(settingsForm);
@@ -1366,7 +1556,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // --- API Fetching for Selects ---
         async function fetchAndPopulate(url, selectElement, placeholder) {
             try {
                 const response = await fetch(url);
@@ -1394,44 +1583,34 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // --- Validation and Redirection Logic ---
         function handleSaveAndRedirect(event) {
-            event.preventDefault(); // Prevent form submission
+            event.preventDefault();
             
-            // 1. Validation Logic
             const socketTimeoutInput = document.getElementById('socket-timeout');
             const timeoutValue = socketTimeoutInput.value;
             
-            // Remove previous error styles
             socketTimeoutInput.classList.remove('ring-2', 'ring-red-500');
 
-            // Example validation: check if timeout is a non-negative number
             if (timeoutValue && (isNaN(timeoutValue) || Number(timeoutValue) < 0)) {
-                // If validation fails:
                 showNotification('Error: Socket Timeout must be a valid, non-negative number.', 'error');
-                socketTimeoutInput.classList.add('ring-2', 'ring-red-500'); // Highlight the error field
-                socketTimeoutInput.scrollIntoView({ behavior: 'smooth', block: 'center' }); // Scroll to it
-                socketTimeoutInput.focus(); // Focus the input
-                return; // Stop the function
+                socketTimeoutInput.classList.add('ring-2', 'ring-red-500');
+                socketTimeoutInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                socketTimeoutInput.focus();
+                return;
             }
             
-            // 2. If validation is successful:
-            saveSettings(false); // Save without showing the default message
+            saveSettings(false);
             showNotification('Settings saved! Redirecting now...', 'success');
             
-            // 3. Redirect to index.html after a short delay
             setTimeout(() => {
                 window.location.href = 'index.html';
-            }, 1500); // 1.5-second delay for the user to read the message
+            }, 1500);
         }
 
-        // --- Event Listeners ---
         if(saveBtn) {
-            // Attach the new handler to the save button
             saveBtn.addEventListener('click', handleSaveAndRedirect);
         }
         
-        // This keeps the auto-save functionality on individual fields
         settingsForm.querySelectorAll('input, select').forEach(input => {
             input.addEventListener('change', () => saveSettings());
         });
@@ -1448,17 +1627,17 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // Initial load
         loadSettings();
     }
 });
+
 // Donation grid scrolling
 const donationGrid = document.getElementById('donationGrid');
 const scrollLeftBtn = document.getElementById('scrollLeftBtn');
 const scrollRightBtn = document.getElementById('scrollRightBtn');
 
 if (donationGrid && scrollLeftBtn && scrollRightBtn) {
-    const scrollAmount = 300; // Adjust scroll distance as needed
+    const scrollAmount = 300;
 
     scrollLeftBtn.addEventListener('click', () => {
         donationGrid.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
@@ -1468,3 +1647,121 @@ if (donationGrid && scrollLeftBtn && scrollRightBtn) {
         donationGrid.scrollBy({ left: scrollAmount, behavior: 'smooth' });
     });
 }
+
+function populateConfigView(videoInfo, isBatch = false) {
+    currentVideoInfo = videoInfo;
+    selectedVideoIds.clear();
+    selectedAudioIds.clear();
+
+    if (isBatch) {
+        configTitle.textContent = `Batch Config: ${selectedPlaylistVideoUrls.size} Videos`;
+        configSummary.textContent = `Applying settings to all selected videos from "${currentPlaylistInfo.title}". Format details below are from the first selected video.`;
+        configFilenameBase.value = (currentPlaylistInfo.title || 'playlist').replace(/[\\/:*?"<>|]/g, '_') + '/%(playlist_index)s - %(title)s';
+
+        const firstVideoDetails = currentPlaylistInfo.entries.find(v => selectedPlaylistVideoUrls.has(v.url));
+        configThumbnail.src = firstVideoDetails?.thumbnail || 'https://placehold.co/256x144/1a1a1a/e5e5e5?text=Batch+Config';
+    } else {
+        configTitle.textContent = videoInfo.title || 'Unknown Title';
+        configSummary.textContent = videoInfo.description || 'No description available.';
+        configFilenameBase.value = (videoInfo.suggested_filename || `${(videoInfo.title || 'video')}`).replace(/\.%\(ext\)s$/, '');
+        configThumbnail.src = videoInfo.thumbnail || 'https://placehold.co/256x144/1a1a1a/e5e5e5?text=No+Thumbnail';
+    }
+
+    videoFormatsTableBody.innerHTML = '';
+    audioFormatsTableBody.innerHTML = '';
+    subtitlesTableBody.innerHTML = '';
+
+    const bestVideoIds = videoInfo.best_video_ids || [];
+    let bestAudioIds = videoInfo.best_audio_ids || [];
+    // Prefer non -drc id among best audios
+    if (bestAudioIds.length > 1) {
+        const nonDrc = bestAudioIds.filter(id => !/-drc\b/i.test(id));
+        if (nonDrc.length > 0) bestAudioIds = nonDrc;
+    }
+
+    // Populate Video Formats Table
+    if (videoInfo.video_formats && videoInfo.video_formats.length > 0) {
+        const firstBestVideoCodec = videoInfo.video_formats.find(f => bestVideoIds.includes(f.id))?.vcodec;
+        videoInfo.video_formats.forEach(format => {
+            const isBest = bestVideoIds.includes(format.id);
+            const row = document.createElement('tr');
+            row.className = 'format-table-row cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors';
+            if (isBest) row.classList.add('best-row');
+            row.dataset.id = format.id;
+            row.dataset.type = 'video';
+            
+            const bitrate = format.vbr ? `${Math.round(format.vbr)} kbps` : (format.tbr ? `${Math.round(format.tbr)} kbps` : 'N/A');
+            const codecClass = (isBest && format.vcodec !== firstBestVideoCodec) ? 'diff-codec' : '';
+            const fileSizeStr = `${format.filesize_is_approx ? '~' : ''}${formatFileSize(format.filesize)}`;
+
+            row.innerHTML = `
+                <td class="p-2 font-mono text-xs">${format.id}</td>
+                <td class="p-2">${format.ext}</td>
+                <td class="p-2">${format.resolution || 'N/A'}</td>
+                <td class="p-2">${bitrate}</td>
+                <td class="p-2">${fileSizeStr}</td>
+                <td class="p-2 truncate ${codecClass}" title="${format.vcodec}">${format.vcodec}</td>
+            `;
+            videoFormatsTableBody.appendChild(row);
+        });
+    } else {
+        videoFormatsTableBody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-400">No video formats available.</td></tr>';
+    }
+
+    // Populate Audio Formats Table
+    if (videoInfo.audio_formats && videoInfo.audio_formats.length > 0) {
+        const firstBestAudioCodec = videoInfo.audio_formats.find(f => bestAudioIds.includes(f.id))?.acodec;
+        videoInfo.audio_formats.forEach(format => {
+            const isBest = bestAudioIds.includes(format.id);
+            const row = document.createElement('tr');
+            row.className = 'format-table-row cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors';
+            if (isBest) row.classList.add('best-row');
+            row.dataset.id = format.id;
+            row.dataset.type = 'audio';
+            
+            const bitrate = format.abr ? `${Math.round(format.abr)} kbps` : 'N/A';
+            const codecClass = (isBest && format.acodec !== firstBestAudioCodec) ? 'diff-codec' : '';
+            const fileSizeStr = `${format.filesize_is_approx ? '~' : ''}${formatFileSize(format.filesize)}`;
+
+            row.innerHTML = `
+                <td class="p-2 font-mono text-xs">${format.id}</td>
+                <td class="p-2">${format.ext}</td>
+                <td class="p-2">${bitrate}</td>
+                <td class="p-2">${fileSizeStr}</td>
+                <td class="p-2 truncate ${codecClass}" title="${format.acodec}">${format.acodec}</td>
+            `;
+            audioFormatsTableBody.appendChild(row);
+        });
+    } else {
+        audioFormatsTableBody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-400">No audio-only formats available.</td></tr>';
+    }
+
+    // Populate Subtitles
+    const subtitleLangSelect = document.getElementById('config-subtitle-lang');
+    subtitleLangSelect.innerHTML = '<option value="none">No Subtitles</option><option value="all">All Languages</option>';
+    if (videoInfo.subtitle_languages && videoInfo.subtitle_languages.length > 0) {
+        videoInfo.subtitle_languages.forEach(lang => {
+            subtitleLangSelect.add(new Option(lang, lang));
+        });
+    }
+    if (videoInfo.subtitles && videoInfo.subtitles.length > 0) {
+        videoInfo.subtitles.forEach(subtitle => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td class="p-2">${subtitle.lang}</td>
+                <td class="p-2">${subtitle.name}</td>
+                <td class="p-2">${subtitle.auto ? 'Yes' : 'No'}</td>
+            `;
+            subtitlesTableBody.appendChild(row);
+        });
+    } else {
+        subtitlesTableBody.innerHTML = '<tr><td colspan="3" class="p-4 text-center text-gray-400">No subtitles available.</td></tr>';
+    }
+
+    configContentLoading.style.display = 'none';
+    configContentLoaded.style.display = 'block';
+    setActivePreset('default');
+    applyPreset('default');
+    showNotification('Configuration ready!', 'success');
+}
+
