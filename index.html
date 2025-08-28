@@ -34,7 +34,7 @@
         
         <div class="space-y-2">
             <a href="settings.html" class="sidebar-link">
-                <svg class="sidebar-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.438.995s.145.755.438.995l1.003.827c.447.368.623.98.26 1.431l-1.296 2.247a1.125 1.125 0 01-1.37.49l-1.217-.456c-.355-.133-.75-.072-1.075.124a6.57 6.57 0 01-.22.127c-.331.183-.581.495-.645.87l-.213 1.281c-.09.543-.56.94-1.11.94h-2.593c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.063-.374-.313-.686-.645-.87a6.52 6.52 0 01-.22-.127c-.324-.196-.72-.257-1.075-.124l-1.217.456a1.125 1.125 0 01-1.37-.49l-1.296-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.437-.995s-.145-.755-.437-.995l-1.004-.827a1.125 1.125 0 01-.26-1.431l1.296-2.247a1.125 1.125 0 011.37-.49l1.217.456c.355.133.75.072 1.075-.124.072-.044.146-.087.22-.127.332-.183.582-.495.645-.87l.213-1.281z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                <svg class="sidebar-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.63.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.438.995s.145.755.438.995l1.003.827c.447.368.623.98.26 1.431l-1.296 2.247a1.125 1.125 0 01-1.37.49l-1.217-.456c-.355-.133-.75-.072-1.075.124a6.57 6.57 0 01-.22.127c-.331.183-.581.495-.645.87l-.213 1.281c-.09.543-.56.94-1.11.94h-2.593c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.063-.374-.313-.686-.645-.87a6.52 6.52 0 01-.22-.127c-.324-.196-.72-.257-1.075-.124l-1.217.456a1.125 1.125 0 01-1.37-.49l-1.296-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.437-.995s-.145-.755-.437-.995l-1.004-.827a1.125 1.125 0 01-.26-1.431l1.296-2.247a1.125 1.125 0 011.37-.49l1.217.456c.355.133.75.072 1.075-.124.072-.044.146-.087.22-.127.332-.183.582-.495.645-.87l.213-1.281z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                 <span>Settings</span>
             </a>
 
@@ -56,7 +56,7 @@
         </button>
     </nav>
     
-    <main class="relative flex-grow p-4 sm:p-6 lg:p-8 pl-24 transition-all duration-300">
+    <main id="main-content-wrapper" class="relative flex-grow p-4 sm:p-6 lg:p-8 transition-all duration-300">
         <div class="absolute top-6 right-6 z-10">
             <button id="theme-toggle" class="p-3 rounded-full transition-colors duration-300 shadow-lg">
                 
@@ -75,7 +75,7 @@
             
             <!-- Centered Title and Description -->
             <div class="flex-1 flex flex-col justify-center items-center max-w-4xl mx-auto">
-                <section id="description-section" class="mb-8">
+                <section id="description-section" class="mb-6">
                     <h1 class="text-4xl md:text-5xl font-bold mb-4">YT-DL Studio</h1>
                     <p class="text-lg max-w-3xl mx-auto text-secondary-light dark:text-secondary-dark">
                         YT-DLS leverages the power of yt-dlp, a feature-rich command-line audio/video downloader with support for thousands of sites. 
@@ -84,18 +84,23 @@
                 </section>
     
                 <!-- Centered URL Input -->
-                <section id="input-section" class="mb-8 w-full max-w-2xl relative">
+                <section id="input-section" class="mb-6 w-full max-w-2xl relative">
                     <input id="url-input" type="text" placeholder="Enter Video or Playlist URL and press Enter" class="input-base">
-                    <button id="fetch-info-btn" class="btn btn-primary absolute top-1/2 right-3 -translate-y-1/2 p-2.5">
+                    <button id="fetch-info-btn" aria-label="Fetch video info" class="btn btn-primary absolute top-1/2 right-3 -translate-y-1/2 p-2.5">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
                         </svg>
                     </button>
                 </section>
     
-                <button id="show-downloads-btn" class="btn btn-green-outline">
-                    Download Queue
-                </button>
+                <div class="flex gap-4 items-center">
+                    <button id="show-downloads-btn" class="btn btn-green-outline">
+                        Download Queue
+                    </button>
+                    <button id="diagnostic-btn" class="btn text-sm py-2 px-4 bg-blue-500/10 text-blue-500 dark:bg-blue-500/20 dark:text-blue-400 hover:bg-blue-500/20 dark:hover:bg-blue-500/40 transition-colors" title="Run system diagnostic check">
+                        🔧 Check System
+                    </button>
+                </div>
             </div>
     
             <!-- Config and Downloads sections remain at the bottom -->
@@ -110,9 +115,73 @@
                 </div>
                 <div id="downloads-container" class="space-y-4"></div>
             </section>
-    
+            <section id="playlist-section" class="my-12 w-[80%] max-w-5xl hidden transition-all duration-500 card p-6 text-left mx-auto">
+                <div class="flex justify-between items-center mb-4 border-b border-[var(--border-light)] dark:border-[var(--border-dark)] pb-4">
+                    <div>
+                        <h2 id="playlist-title" class="text-2xl font-bold">Playlist Title</h2>
+                        <p id="playlist-video-count" class="text-sm text-secondary-light dark:text-secondary-dark">0 videos</p>
+                    </div>
+                    <button id="playlist-back-btn" class="btn hover:bg-black/10 dark:hover:bg-white/10">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+                        </svg>
+                        <span>Back</span>
+                    </button>
+                </div>
+            
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center space-x-2">
+                        <button id="playlist-select-all-btn" class="btn text-sm py-1 px-3">Select All</button>
+                        <button id="playlist-deselect-all-btn" class="btn text-sm py-1 px-3">Deselect All</button>
+                    </div>
+                    <p id="playlist-selection-count" class="text-sm font-semibold">0 video(s) selected</p>
+                </div>
+            
+                <div class="table-container max-h-96 border border-[var(--border-light)] dark:border-[var(--border-dark)] rounded-lg overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead class="bg-gray-100 dark:bg-black/20 sticky top-0">
+                            <tr>
+                                <th class="p-3 w-12 text-center">
+                                    <input type="checkbox" id="playlist-header-checkbox" class="checkbox-style">
+                                </th>
+                                <th class="p-3 text-left">Title</th>
+                                <th class="p-3 text-right">Duration</th>
+                            </tr>
+                        </thead>
+                        <tbody id="playlist-items-body" class="divide-y divide-[var(--border-light)] dark:divide-[var(--border-dark)]">
+                            </tbody>
+                    </table>
+                </div>
+            
+                <div class="flex justify-end mt-6">
+                    <button id="playlist-configure-btn" disabled class="btn btn-primary px-6 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed">
+                        Configure & Download Selected
+                    </button>
+                </div>
+            </section>    
         </div>
     </main>
+    
+    <template id="playlist-item-template">
+        <tr class="playlist-item-row hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer">
+            <td class="p-3 text-center">
+                <input type="checkbox" class="playlist-item-checkbox checkbox-style">
+            </td>
+            <td class="p-3">
+                <div class="flex items-center space-x-3">
+                    <img class="playlist-item-thumbnail w-16 h-9 object-cover rounded border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800" 
+                         src="" alt="Thumbnail" loading="lazy">
+                    <div class="flex-1 min-w-0">
+                        <div class="playlist-item-title font-medium text-sm line-clamp-2 mb-1">Title</div>
+                        <div class="playlist-item-id text-xs text-gray-500 dark:text-gray-400">ID: </div>
+                    </div>
+                </div>
+            </td>
+            <td class="p-3 text-right">
+                <span class="playlist-item-duration text-sm font-mono">00:00</span>
+            </td>
+        </tr>
+    </template>
     
     <div style="display:none">
         <section id="config-section-template">
@@ -127,29 +196,35 @@
                     <div role="status" class="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-[var(--primary-green)] border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
                     <p class="mt-2 text-[var(--text-secondary-light)] dark:text-[var(--text-secondary-dark)]">Fetching video information...</p>
                 </div>
-                <div id="config-content-loaded" class="hidden space-y-6 text-left">
+                <div id="config-content-loaded" class="hidden space-y-8 text-left">
                     <div class="flex flex-col md:flex-row gap-6">
                         
-                        <img id="config-thumbnail" src="" alt="Video Thumbnail" width="533" height="300" class="object-cover rounded-lg flex-shrink-0 shadow-md">
+                        <img id="config-thumbnail" src="" alt="Video Thumbnail" width="590" height="332" class="rounded-lg flex-shrink-0 shadow-md">
                         <div class="flex-grow">
                             <h3 id="config-title" class="text-2xl font-bold mb-2"></h3>
                             <div class="mb-4">
                                 <h4 class="font-semibold text-sm mb-1">Description:</h4>
                                 <p id="config-summary" class="text-sm text-[var(--text-secondary-light)] dark:text-[var(--text-secondary-dark)] max-h-24 overflow-y-auto"></p>
                             </div>
-                            <div class="space-y-4">
+                            <div class="space-y-6">
                                 <div>
                                     <label for="config-filename-base" class="font-semibold text-sm mb-1 block">Filename Template:</label>
                                     <input id="config-filename-base" type="text" class="input-form">
                                 </div>
-                                <div class="w-1/2">
-                                    <label for="config-output-format" class="font-semibold text-sm mb-1 block">Output Container:</label>
-                                    <select id="config-output-format" class="input-form">
-                                        <option value="default">Default</option>
-                                        <option value="mp4">MP4</option>
-                                        <option value="mkv">MKV</option>
-                                        <option value="webm">WebM</option>
-                                    </select>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label for="config-output-format" class="font-semibold text-sm mb-1 block">Output Container:</label>
+                                        <select id="config-output-format" class="input-form">
+                                            <option value="default">Default</option>
+                                            <option value="mp4">MP4</option>
+                                            <option value="mkv">MKV</option>
+                                            <option value="webm">WebM</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label for="config-download-path" class="font-semibold text-sm mb-1 block">Download Path:</label>
+                                        <input id="config-download-path" type="text" class="input-form" value="D:\\mov" placeholder="C:\\Users\\%USERNAME%\\Downloads">
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -196,20 +271,23 @@
                         </div>
                     </div>
                 
-                    <div class="space-y-4 border-t border-[var(--border-light)] dark:border-[var(--border-dark)] pt-6">
-                        <div class="text-left p-4 border border-[var(--border-light)] dark:border-[var(--border-dark)] rounded-lg">
-                            <div class="flex items-center"><input type="checkbox" id="enable-subtitles" class="mr-2 h-5 w-5 text-[var(--primary-green)] bg-transparent border-2 dark:border-gray-600 border-gray-300 rounded focus:ring-0 focus:ring-offset-0"><label for="enable-subtitles" class="font-semibold cursor-pointer">Subtitles</label></div>
-                            <div id="subtitles-options" class="hidden mt-4 space-y-4">
+                    <div class="space-y-6 border-t border-[var(--border-light)] dark:border-[var(--border-dark)] pt-6">
+                        <div class="text-left">
+                            <div class="flex items-center"><input type="checkbox" id="enable-subtitles" class="mr-2 h-5 w-5 text-[var(--primary-green)] bg-transparent border-2 dark:border-gray-600 border-gray-300 rounded focus:ring-0 focus:ring-offset-0"><label for="enable-subtitles" class="font-semibold text-lg cursor-pointer">Subtitles</label></div>
+                            <div id="subtitles-options" class="hidden mt-4 space-y-6">
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <select id="config-subtitle-lang" class="w-full bg-gray-200 dark:bg-black/20 border border-[var(--border-light)] dark:border-[var(--border-dark)] rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-[var(--primary-green)]"><option value="none">No Subtitles</option><option value="all">All Languages</option></select>
                                     <select id="config-subtitle-format" class="w-full bg-gray-200 dark:bg-black/20 border border-[var(--border-light)] dark:border-[var(--border-dark)] rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-[var(--primary-green)]"><option value="best">Best Format</option><option value="srt">SRT</option><option value="vtt">VTT</option><option value="ass">ASS</option></select>
+                                </div>
+                                <div>
+                                    <label class="flex items-center"><input type="checkbox" id="pp-embed-subs" class="mr-2 h-5 w-5 text-[var(--primary-green)] bg-transparent border-2 dark:border-gray-600 border-gray-300 rounded focus:ring-0 focus:ring-offset-0">Embed Subtitles</label>
                                 </div>
                                 <div class="table-container max-h-40"><table class="w-full text-left text-sm"><thead><tr><th>Lang</th><th>Name</th><th>Auto?</th></tr></thead><tbody id="subtitles-table-body"></tbody></table></div>
                             </div>
                         </div>
 
-                        <div class="text-left p-4 border border-[var(--border-light)] dark:border-[var(--border-dark)] rounded-lg">
-                            <div class="flex items-center"><input type="checkbox" id="enable-postprocessing" class="mr-2 h-5 w-5 text-[var(--primary-green)] bg-transparent border-2 dark:border-gray-600 border-gray-300 rounded focus:ring-0 focus:ring-offset-0"><label for="enable-postprocessing" class="font-semibold cursor-pointer">Post-processing</label></div>
+                        <div class="text-left">
+                            <div class="flex items-center"><input type="checkbox" id="enable-postprocessing" class="mr-2 h-5 w-5 text-[var(--primary-green)] bg-transparent border-2 dark:border-gray-600 border-gray-300 rounded focus:ring-0 focus:ring-offset-0"><label for="enable-postprocessing" class="font-semibold text-lg cursor-pointer">Post-processing</label></div>
                             <div id="postprocessing-options" class="hidden mt-4 space-y-4">
                                 <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
                                     <div><label class="flex items-center"><input type="checkbox" id="pp-extract-audio" class="mr-2 h-5 w-5 text-[var(--primary-green)] bg-transparent border-2 dark:border-gray-600 border-gray-300 rounded focus:ring-0 focus:ring-offset-0">Extract Audio</label></div>
@@ -239,50 +317,47 @@
                             </div>
                         </div>
                     
-                        <div class="text-left p-4 border border-[var(--border-light)] dark:border-[var(--border-dark)] rounded-lg">
-                            <label class="font-semibold">Additional Options</label>
-                            <div class="mt-2 grid grid-cols-2 md:grid-cols-3 gap-4">
-                                <div><label class="flex items-center"><input type="checkbox" id="pp-embed-thumbnail" class="mr-2 h-5 w-5 text-[var(--primary-green)] bg-transparent border-2 dark:border-gray-600 border-gray-300 rounded focus:ring-0 focus:ring-offset-0">Embed Thumbnail</label></div>
+                        <!-- New: Metadata section with its own toggle -->
+                        <div class="text-left">
+                            <div class="flex items-center"><input type="checkbox" id="enable-metadata" class="mr-2 h-5 w-5 text-[var(--primary-green)] bg-transparent border-2 dark:border-gray-600 border-gray-300 rounded focus:ring-0 focus:ring-offset-0"><label for="enable-metadata" class="font-semibold text-lg cursor-pointer">Metadata</label></div>
+                            <div id="metadata-options" class="hidden mt-4 space-y-6">
                                 <div><label class="flex items-center"><input type="checkbox" id="pp-embed-metadata" class="mr-2 h-5 w-5 text-[var(--primary-green)] bg-transparent border-2 dark:border-gray-600 border-gray-300 rounded focus:ring-0 focus:ring-offset-0">Embed Metadata</label></div>
-                                <div><label class="flex items-center"><input type="checkbox" id="pp-add-chapters" class="mr-2 h-5 w-5 text-[var(--primary-green)] bg-transparent border-2 dark:border-gray-600 border-gray-300 rounded focus:ring-0 focus:ring-offset-0">Add Chapters</label></div>
-                                <div><label class="flex items-center"><input type="checkbox" id="pp-embed-subs" class="mr-2 h-5 w-5 text-[var(--primary-green)] bg-transparent border-2 dark:border-gray-600 border-gray-300 rounded focus:ring-0 focus:ring-offset-0">Embed Subtitles</label></div>
-                                <div><label class="flex items-center"><input type="checkbox" id="pp-embed-info-json" class="mr-2 h-5 w-5 text-[var(--primary-green)] bg-transparent border-2 dark:border-gray-600 border-gray-300 rounded focus:ring-0 focus:ring-offset-0">Embed info.json</label></div>
-                                <div><label class="flex items-center"><input type="checkbox" id="pp-xattrs" class="mr-2 h-5 w-5 text-[var(--primary-green)] bg-transparent border-2 dark:border-gray-600 border-gray-300 rounded focus:ring-0 focus:ring-offset-0">Write xattrs</label></div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label for="pp-parse-metadata" class="text-sm">Parse Metadata:</label>
+                                        <input id="pp-parse-metadata" type="text" class="input-form mt-1" placeholder="%(artist)s - %(title)s:%(title)s">
+                                    </div>
+                                    <div>
+                                        <label for="pp-replace-metadata" class="text-sm">Replace in Metadata:</label>
+                                        <input id="pp-replace-metadata" type="text" class="input-form mt-1" placeholder="title /[.!?]/_">
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        
-                        <div class="text-left p-4 border border-[var(--border-light)] dark:border-[var(--border-dark)] rounded-lg">
-                            <label class="font-semibold">Cutting &amp; Splicing</label>
-                            <div class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label class="flex items-center"><input type="checkbox" id="pp-split-chapters" class="mr-2 h-5 w-5 text-[var(--primary-green)] bg-transparent border-2 dark:border-gray-600 border-gray-300 rounded focus:ring-0 focus:ring-offset-0">Split Chapters</label>
+                    </div>
+                    
+                    <!-- Additional Options moved to the end, above Final Command -->
+                    <div class="space-y-6 border-t border-[var(--border-light)] dark:border-[var(--border-dark)] pt-6">
+                        <div class="text-left">
+                            <label class="font-bold text-lg mb-4 block">Additional Options</label>
+                            <div class="mt-3 space-y-4">
+                                <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                    <div><label class="flex items-center"><input type="checkbox" id="pp-embed-thumbnail" class="mr-2 h-5 w-5 text-[var(--primary-green)] bg-transparent border-2 dark:border-gray-600 border-gray-300 rounded focus:ring-0 focus:ring-offset-0">Embed Thumbnail</label></div>
+                                    <div><label class="flex items-center"><input type="checkbox" id="pp-add-chapters" class="mr-2 h-5 w-5 text-[var(--primary-green)] bg-transparent border-2 dark:border-gray-600 border-gray-300 rounded focus:ring-0 focus:ring-offset-0">Add Chapters</label></div>
+                                    <div><label class="flex items-center"><input type="checkbox" id="pp-embed-info-json" class="mr-2 h-5 w-5 text-[var(--primary-green)] bg-transparent border-2 dark:border-gray-600 border-gray-300 rounded focus:ring-0 focus:ring-offset-0">Embed info.json</label></div>
+                                    <div><label class="flex items-center"><input type="checkbox" id="pp-xattrs" class="mr-2 h-5 w-5 text-[var(--primary-green)] bg-transparent border-2 dark:border-gray-600 border-gray-300 rounded focus:ring-0 focus:ring-offset-0">Write xattrs</label></div>
+                                    <div><label class="flex items-center"><input type="checkbox" id="pp-split-chapters" class="mr-2 h-5 w-5 text-[var(--primary-green)] bg-transparent border-2 dark:border-gray-600 border-gray-300 rounded focus:ring-0 focus:ring-offset-0">Split Chapters</label></div>
+                                    <div><label class="flex items-center"><input type="checkbox" id="pp-force-keyframes" class="mr-2 h-5 w-5 text-[var(--primary-green)] bg-transparent border-2 dark:border-gray-600 border-gray-300 rounded focus:ring-0 focus:ring-offset-0">Force Keyframes at Cuts</label></div>
                                 </div>
                                 <div>
-                                    <label class="flex items-center"><input type="checkbox" id="pp-force-keyframes" class="mr-2 h-5 w-5 text-[var(--primary-green)] bg-transparent border-2 dark:border-gray-600 border-gray-300 rounded focus:ring-0 focus:ring-offset-0">Force Keyframes at Cuts</label>
-                                </div>
-                                <div class="col-span-full">
                                     <label for="pp-concat-playlist" class="font-semibold text-sm mb-1 block">Concatenate Playlist:</label>
                                     <select id="pp-concat-playlist" class="input-form">
                                         <option value="never">Never</option>
-                                        <option value="multi_video">Multi Video (Default)</option>
+                                        <option value="multi_video" selected>Multi Video (Default)</option>
                                         <option value="always">Always</option>
                                     </select>
                                 </div>
-                            </div>
-                        </div>
-                        
-                        <div class="text-left p-4 border border-[var(--border-light)] dark:border-[var(--border-dark)] rounded-lg">
-                            <label class="font-semibold">Metadata &amp; Correction</label>
-                            <div class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label for="pp-parse-metadata" class="text-sm">Parse Metadata:</label>
-                                    <input id="pp-parse-metadata" type="text" class="input-form mt-1" placeholder="%(artist)s - %(title)s:%(title)s">
-                                </div>
-                                <div>
-                                    <label for="pp-replace-metadata" class="text-sm">Replace in Metadata:</label>
-                                    <input id="pp-replace-metadata" type="text" class="input-form mt-1" placeholder="title /[.!?]/_">
-                                </div>
-                                <div class="col-span-full">
                                     <label for="pp-fixup" class="font-semibold text-sm mb-1 block">Fixup Policy:</label>
                                     <select id="pp-fixup" class="input-form">
                                         <option value="detect_or_warn">Detect or Warn (Default)</option>
@@ -293,85 +368,67 @@
                                 </div>
                             </div>
                         </div>
-                    </div>
-                    
-                    <div class="space-y-2 border-t border-[var(--border-light)] dark:border-[var(--border-dark)] pt-6">
+
                         <div>
-                            <label for="final-command" class="font-semibold text-sm mb-1 block">Final Command:</label>
+                            <label for="final-command" class="font-bold text-lg mb-4 block">Final Command:</label>
                             <textarea id="final-command" class="w-full h-24 p-2 rounded-lg bg-gray-200 dark:bg-black/20 font-mono text-xs border border-[var(--border-light)] dark:border-[var(--border-dark)]"></textarea>
                         </div>
                     </div>
                 </div>
             </div>
-            <div class="flex-shrink-0 flex justify-end items-center p-4 bg-gray-100 dark:bg-black/20 rounded-b-2xl space-x-4">
+            <div class="flex-shrink-0 flex justify-end items-center p-4 rounded-b-2xl space-x-4">
                 <button id="config-cancel-btn" class="px-6 py-2 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors">Cancel</button>
                 <button id="config-confirm-download-btn" class="px-6 py-2 rounded-full bg-[var(--primary-green)] text-black font-bold hover:bg-opacity-80 transition-colors">Download</button>
             </div>
         </section>
                 
+        <!-- updated download item template layout -->
         <div id="download-item-template" class="card p-4 flex flex-col items-center space-x-4 transition-all duration-500 opacity-0 transform translate-y-4" style="display: none;">
-            <div class="flex items-center w-full">
+            <div class="flex items-start w-full">
                 <img src="" alt="Thumbnail" class="w-48 h-27 object-cover rounded-md flex-shrink-0 bg-gray-700">
-                <div class="flex-grow overflow-hidden ml-6">
-                    <h3 class="font-semibold truncate">Downloading...</h3>
-                    <p class="status-text text-sm text-gray-400 truncate mb-3">Initializing...</p>
-                    
-                    <!-- Dual Progress Bars -->
-                    <div class="space-y-2">
-                        <!-- Video Progress Bar -->
-                        <div class="video-progress-container">
-                            <div class="flex justify-between text-xs text-gray-400 mb-1">
-                                <span>Video Track</span>
-                                <span class="video-progress-text">0%</span>
-                            </div>
-                            <div class="relative w-full bg-gray-700 rounded-full h-2">
-                                <div class="video-progress-bar bg-green-400 h-2 rounded-full transition-all duration-300" style="width: 0%; box-shadow: 0 0 8px rgba(0, 255, 153, 0.6);"></div>
-                            </div>
+                <div class="flex-grow overflow-hidden ml-6 text-left">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex-grow">
+                            <h3 class="font-semibold leading-tight truncate">Downloading...</h3>
+                            <p class="status-text text-sm text-gray-400 truncate mt-0.5">Initializing...</p>
                         </div>
-                        
-                        <!-- Audio Progress Bar -->
-                        <div class="audio-progress-container">
-                            <div class="flex justify-between text-xs text-gray-400 mb-1">
-                                <span>Audio Track</span>
-                                <span class="audio-progress-text">0%</span>
-                            </div>
-                            <div class="relative w-full bg-gray-700 rounded-full h-2">
-                                <div class="audio-progress-bar bg-green-400 h-2 rounded-full transition-all duration-300" style="width: 0%; box-shadow: 0 0 8px rgba(0, 255, 153, 0.6);"></div>
-                            </div>
+                        <div class="download-actions-row flex items-center rounded-full border border-[var(--border-light)] dark:border-[var(--border-dark)] bg-transparent px-3 py-1.5 shrink-0">
+                            <button class="log-btn p-1.5 hover:bg-black/10 dark:hover:bg-white/10 rounded-full" title="View Log">
+                                <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75c0-.231-.035-.454-.1-.664M6.75 7.5h1.5M6.75 12h1.5m-1.5 3h1.5M3.375 5.106c-.09.097-.159.223-.22.352a2.25 2.25 0 00-.653.882V18a2.25 2.25 0 002.25 2.25h13.5A2.25 2.25 0 0021 18V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75c0-.231-.035-.454-.1-.664" />
+                                </svg>
+                            </button>
+                            <button class="download-log-btn p-1.5 hover:bg-black/10 dark:hover:bg-white/10 rounded-full hidden" title="Download Log">
+                                <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                                </svg>
+                            </button>
+                            <button class="pause-resume-btn p-1.5 hover:bg-black/10 dark:hover:bg-white/10 rounded-full" title="Pause/Resume">
+                                <svg class="pause-icon h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M5 4h3v12H5V4zm7 0h3v12h-3V4z"/></svg>
+                                <svg class="play-icon h-4 w-4 hidden" viewBox="0 0 20 20" fill="currentColor"><path d="M4 4l12 6-12 6V4z"/></svg>
+                            </button>
+                            <button class="cancel-btn p-1.5 hover:bg-black/10 dark:hover:bg-white/10 rounded-full" title="Cancel">
+                                <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>
+                            </button>
+                            <button class="remove-btn p-1.5 hover:bg-black/10 dark:hover:bg-white/10 rounded-full hidden" title="Remove">
+                                <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd" /></svg>
+                            </button>
                         </div>
                     </div>
-                    
-                    <div class="flex text-xs text-gray-400 mt-2 space-x-4">
-                        <p>Speed: <span class="speed-text font-mono">...</span></p>
-                        <p>ETA: <span class="eta-text font-mono">...</span></p>
-                        <p>Size: <span class="size-text font-mono">...</span></p>
+
+            <div class="mt-4 w-full">
+                <div class="relative w-full bg-gray-700 rounded-full h-3">
+                    <div class="progress-bar bg-green-400 h-3 rounded-full transition-all duration-300" style="width: 0%; box-shadow: 0 0 8px rgba(0, 255, 153, 0.6);"></div>
+                </div>
+                <div class="flex items-center justify-between text-xs text-gray-400 mt-1.5">
+                    <p class="font-mono size-text">...</p>
+                    <div class="flex items-center space-x-3 font-mono">
+                        <span class="speed-text">...</span>
+                        <span class="eta-text">Remaining: ...</span>
+                        <span class="progress-text font-bold">0%</span>
                     </div>
                 </div>
-                <div class="flex flex-col space-y-2 ml-4">
-                    <div class="flex space-x-2">
-                        <button class="log-btn btn p-2" title="View Log">
-                            <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75c0-.231-.035-.454-.1-.664M6.75 7.5h1.5M6.75 12h1.5m-1.5 3h1.5M3.375 5.106c-.09.097-.159.223-.22.352a2.25 2.25 0 00-.653.882V18a2.25 2.25 0 002.25 2.25h13.5A2.25 2.25 0 0021 18V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75c0-.231-.035-.454-.1-.664" />
-                            </svg>
-                        </button>
-                        <button class="download-log-btn btn p-2 hidden" title="Download Log">
-                            <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                            </svg>
-                        </button>
-                    </div>
-                    <div class="flex space-x-2">
-                        <button class="pause-resume-btn btn p-2" title="Pause/Resume">
-                            <svg class="pause-icon h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M5 4h3v12H5V4zm7 0h3v12h-3V4z"/></svg>
-                            <svg class="play-icon h-5 w-5 hidden" viewBox="0 0 20 20" fill="currentColor"><path d="M4 4l12 6-12 6V4z"/></svg>
-                        </button>
-                        <button class="cancel-btn btn p-2" title="Cancel">
-                            <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>
-                        </button>
-                        <button class="remove-btn btn p-2 hidden" title="Remove">
-                            <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd" /></svg>
-                        </button>
-                    </div>
+            </div>
                 </div>
             </div>
             <div class="log-container w-full bg-black/50 dark:bg-black/80 p-2 rounded-md mt-4 hidden max-h-48 overflow-y-auto">
