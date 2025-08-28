@@ -30,8 +30,6 @@
 
 </div>
 
-<div align="center">
-
 ### Privacy First
 *Your activity is your business. Zero-log policy with self-hosted analytics.*
 
@@ -43,8 +41,6 @@
 
 ### Powerful & Transparent
 *Full feature set with real-time command generation and transparency.*
-
-</div>
 
 <div align="center">
 
@@ -61,12 +57,7 @@
 </div>
 
 ### Powerful Download Configuration
-
-<div align="center">
-
 *Once you enter a URL, a comprehensive configuration panel appears, giving you granular control over your download*
-
-</div>
 
 #### **Presets & Modes**
 - **Quick Presets:** "Best Quality MP4," "Audio Only (MP3)," "Best Quality MKV"
@@ -87,11 +78,7 @@
 
 #### **Extensive Post-Processing**
 
-<div align="center">
-
 *Advanced media processing capabilities powered by FFmpeg*
-
-</div>
 
 - **Audio Extraction:** Extract to MP3, M4A, FLAC, OGG, and more with quality control
 - **Remux & Recode:** Convert between containers (MKV ↔ MP4) or recode video formats
@@ -101,11 +88,7 @@
 
 #### **Metadata & Organization**
 
-<div align="center">
-
 *Complete control over file naming and metadata*
-
-</div>
 
 - **Custom Filename Templates:** Use yt-dlp variables for organized file naming
 - **Metadata Parsing:** Extract and customize metadata from video titles
@@ -114,11 +97,7 @@
 
 ### Live Download Queue
 
-<div align="center">
-
 *All your downloads in a clean, organized interface with real-time feedback*
-
-</div>
 
 #### **Progress Monitoring**
 - **Real-Time Progress Bars:** Visual progress with smooth animations
@@ -331,11 +310,7 @@ gunicorn -w 4 -b 0.0.0.0:5000 server:app
 - **Theme:** Choose between dark and light themes
 - **Language:** Set your preferred language for the interface
 
-<div align="center">
-
 ### Troubleshooting
-
-</div>
 
 #### **Common Issues & Solutions**
 
@@ -473,8 +448,6 @@ YT-DL Studio
 
 </div>
 
-<div align="center">
-
 ### **Educators & Students**
 - Archive educational content for offline access
 - Create course materials and presentations
@@ -594,11 +567,7 @@ YT-DL Studio
 
 </div>
 
-<div align="center">
-
 ### **Special Thanks**
-
-</div>
 
 This project is fundamentally a user interface built on top of the incredible, versatile, and tirelessly maintained **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** project. We extend our deepest gratitude to:
 
@@ -609,15 +578,11 @@ This project is fundamentally a user interface built on top of the incredible, v
 - **Flask Developers** - For the lightweight and flexible web framework
 - **Open Source Community** - For inspiration, feedback, and contributions
 
-<div align="center">
-
 ### **Built With Love For**
 - **Educators** creating engaging learning experiences
 - **Creators** producing amazing content
 - **Researchers** preserving important media
 - **Everyone** who values privacy and open-source software
-
-</div>
 
 <div align="center">
 
@@ -655,4 +620,3 @@ This project is fundamentally a user interface built on top of the incredible, v
 
 **[Website](https://ytdl-studio.com) • [Contact](mailto:hello@ytdl-studio.com) • [Follow Us](https://twitter.com/ytdlstudio)**
 
-</div>
