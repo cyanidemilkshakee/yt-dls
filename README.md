@@ -1,6 +1,179 @@
 <div align="center">
 
-# YT-DL Studio
+# YT-DL Studio (yt-dls)
+
+A modern, Windows-compatible GUI for yt-dlp built with HTML/CSS/JS and Node.js backend.
+
+## Recent Updates
+
+### Windows Compatibility (Critical)
+- ✅ **Process Handling**: Implemented Windows-safe process termination using `taskkill` fallback
+- ✅ **Pause/Resume**: Disabled on Windows (OS signals don't work reliably) - shows helpful error message
+- ✅ **Paths**: Removed hardcoded "D:\mov" path, now defaults to "./downloads" with user-configurable options
+- ✅ **Platform Detection**: Backend detects OS and frontend adapts UI accordingly
+
+### Dependencies Fixed (Critical)
+- ✅ **Complete package.json**: Added missing dependencies (express, cors, uuid, winston)
+- ✅ **Development Tools**: Added nodemon for better development experience
+- ✅ **Version Compatibility**: Locked compatible versions for stability
+
+### Frontend + CORS Improvements (High)
+- ✅ **Static File Serving**: Express now serves frontend files directly
+- ✅ **CORS Configuration**: Configurable origins via environment variables
+- ✅ **Relative API Paths**: Can be used with served frontend to eliminate CORS issues
+
+### Progress Updates Optimization (High)
+- ✅ **Server-Sent Events (SSE)**: Real-time progress updates without polling
+- ✅ **Fallback Polling**: Automatic fallback to polling if SSE fails
+- ✅ **Reduced Request Load**: SSE eliminates the need for 1-second polling intervals
+- ✅ **Error Handling**: Robust error handling with exponential backoff
+
+### yt-dlp Progress Template (Medium)
+- ✅ **Fixed JSON Template**: Single, well-formed JSON template string
+- ✅ **Better Parsing**: Validates JSON before parsing to prevent mixed-line issues
+- ✅ **Stderr Handling**: Captures status lines and tags them appropriately
+
+### Additional Improvements
+- ✅ **System Diagnostic**: Added `/api/diagnostic` endpoint to check yt-dlp installation and permissions
+- ✅ **CSS Cleanup**: Removed `style.css`, kept `styles.css` for consistency
+- ✅ **Environment Config**: Added `.env.example` for easy configuration
+- ✅ **Graceful Shutdown**: Proper cleanup of processes on server shutdown
+
+## Quick Start
+
+### Prerequisites
+- Node.js 16+ 
+- yt-dlp installed and available in PATH
+
+### Installation
+```bash
+# Clone or download the project
+cd yt-dl-studio
+
+# Install dependencies
+npm install
+
+# Start the server
+npm start
+
+# For development with auto-restart
+npm run dev
+```
+
+### Access
+- Open your browser to `http://localhost:5000`
+- Or serve frontend separately and configure CORS origins
+
+### Configuration
+1. Copy `.env.example` to `.env`
+2. Customize settings as needed:
+   ```env
+   PORT=5000
+   FRONTEND_ORIGIN=http://localhost:3000,file://
+   DOWNLOAD_DIR=./downloads
+   LOG_LEVEL=info
+   ```
+
+## Usage
+
+### Basic Download
+1. Enter a video URL
+2. Click "Fetch Info" or press Enter
+3. Configure download options
+4. Click "Download"
+
+### System Check
+- Click "🔧 Check System" to verify yt-dlp installation and permissions
+
+### Windows Users
+- Pause/Resume functionality is disabled (not reliable on Windows)
+- Use Cancel instead to stop downloads
+- Process termination uses Windows-compatible methods
+
+### Real-time Updates
+- The app automatically uses Server-Sent Events for real-time progress
+- Falls back to polling if SSE is unavailable
+- Reduced server load compared to constant polling
+
+## API Endpoints
+
+### Core Endpoints
+- `GET /` - Serve frontend
+- `GET /api/health` - Health check with platform info
+- `GET /api/diagnostic` - System diagnostic check
+- `GET /api/info?url=<url>` - Get video/playlist information
+
+### Download Management
+- `POST /api/download` - Start download
+- `GET /api/download/:id/status` - Get download status
+- `POST /api/download/:id/cancel` - Cancel download
+- `POST /api/download/:id/pause` - Pause download (Unix only)
+- `POST /api/download/:id/resume` - Resume download (Unix only)
+- `GET /api/downloads` - List all downloads
+- `DELETE /api/download/:id` - Remove download record
+
+### Real-time Updates
+- `GET /api/downloads/events` - Server-Sent Events stream
+
+## Platform Support
+
+### Windows ✅
+- Full download functionality
+- Windows-safe process termination
+- Pause/Resume disabled (shows helpful message)
+- Automatic platform detection
+
+### Linux/macOS ✅
+- Full functionality including pause/resume
+- Signal-based process control
+- All features available
+
+## Troubleshooting
+
+### yt-dlp not found
+```bash
+# Install yt-dlp
+pip install yt-dlp
+# Or
+pip3 install yt-dlp
+```
+
+### Permission errors
+- Check download directory write permissions
+- Run diagnostic check for detailed info
+
+### Real-time updates not working
+- App automatically falls back to polling
+- Check browser SSE support
+- Verify CORS configuration
+
+## Development
+
+### Start development server
+```bash
+npm run dev
+```
+
+### Project Structure
+```
+├── server.js          # Express backend
+├── index.html         # Main frontend
+├── script.js          # Frontend JavaScript
+├── styles.css         # Tailwind CSS styles
+├── package.json       # Dependencies
+├── .env.example       # Environment template
+└── downloads/         # Default download directory
+```
+
+### Contributing
+1. Fork the repository
+2. Create a feature branch
+3. Test on both Windows and Unix platforms
+4. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License.
 ### *The Ultimate Video Downloading Experience*
 
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)

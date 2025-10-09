@@ -1,0 +1,10 @@
+# Dependencies
+node_modules/
+
+# Logs
+logs/
+*.log
+*.log.gz
+
+# Downloads
+downloads/
