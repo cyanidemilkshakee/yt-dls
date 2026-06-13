@@ -7,6 +7,7 @@ import {
 import { 
     showNotification, 
     handleNetworkError,
+    showBackendOfflineModal,
     addEventListenerSafe
 } from './ui-utils.js';
 
@@ -38,34 +39,10 @@ function setupDiagnosticButton() {
         try {
             diagnosticBtn.disabled = true;
             diagnosticBtn.innerHTML = '🔄 Checking...';
-            
+
             const health = await getSystemHealth();
-            
-            let message = `System Health Check:\n\n`;
-            message += `Status: ${health.status === 'healthy' ? '✅ Healthy' : health.status === 'degraded' ? '⚠️ Degraded' : '❌ Error'}\n`;
-            if (health.status_reason) {
-                message += `Reason: ${health.status_reason}\n`;
-            }
-            message += `Platform: ${health.platform}\n`;
-            message += `Node.js: ${health.node_version}\n`;
-            message += `Active Downloads: ${health.active_downloads}\n`;
-            message += `yt-dlp: ${health.yt_dlp_available ? '✅ Available' : '❌ Not found'}`;
-            if (health.yt_dlp_version) {
-                message += ` (v${health.yt_dlp_version})`;
-            }
-            message += `\n`;
-            if (health.yt_dlp_error) {
-                message += `yt-dlp Error: ${health.yt_dlp_error}\n`;
-            }
-            message += `Download Directory: ${health.download_dir_writable ? '✅ Writable' : '❌ Not writable'}\n`;
-            if (health.download_dir_error) {
-                message += `Directory Error: ${health.download_dir_error}\n`;
-            }
-            message += `Pause/Resume: ${health.supports_pause_resume ? '✅ Supported' : '❌ Not supported on Windows'}`;
-            message += `\nSSE: ${health.sse_supported ? '✅ Enabled' : '❌ Disabled'} (clients: ${typeof health.sse_clients === 'number' ? health.sse_clients : 'N/A'})`;
-            
-            alert(message);
-            
+            showHealthModal(health);
+
             if (!health.yt_dlp_available) {
                 showNotification('yt-dlp not found. Please install it first.', 'error');
             } else if (!health.download_dir_writable) {
@@ -73,15 +50,92 @@ function setupDiagnosticButton() {
             } else {
                 showNotification('System check passed!', 'success');
             }
-            
+
         } catch (error) {
             console.error('Health check failed:', error);
-            showNotification('Health check failed. Is the backend running?', 'error');
+            const isOffline = error.message.includes('Failed to fetch') ||
+                error.message.includes('NetworkError') ||
+                error.message.includes('ERR_CONNECTION_REFUSED');
+            if (isOffline) {
+                showBackendOfflineModal();
+            } else {
+                showNotification(`Health check failed: ${error.message}`, 'error');
+            }
         } finally {
             diagnosticBtn.disabled = false;
             diagnosticBtn.innerHTML = '🔧 System Health';
         }
     });
+}
+
+/** Show a rich styled health status modal (replaces the old alert() call). */
+function showHealthModal(health) {
+    if (document.getElementById('health-status-modal')) return;
+
+    const statusColor = health.status === 'healthy' ? '#4ade80' : health.status === 'degraded' ? '#facc15' : '#f87171';
+    const statusIcon  = health.status === 'healthy' ? '✅' : health.status === 'degraded' ? '⚠️' : '❌';
+
+    const row = (label, ok, detail = '') => `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+            <span style="font-size:1.1rem;">${ok === true ? '✅' : ok === false ? '❌' : '⚠️'}</span>
+            <div style="flex:1;">
+                <div style="color:#e2e8f0;font-size:0.9rem;font-weight:600;">${label}</div>
+                ${detail ? `<div style="color:#64748b;font-size:0.78rem;margin-top:2px;">${detail}</div>` : ''}
+            </div>
+        </div>`;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'health-status-modal';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);animation:fadeIn 0.2s ease';
+
+    overlay.innerHTML = `
+        <div style="
+            background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);
+            border:1px solid rgba(255,255,255,0.1);
+            border-radius:16px;padding:32px 36px;
+            max-width:480px;width:90%;
+            box-shadow:0 25px 60px rgba(0,0,0,0.5);
+            font-family:Inter,system-ui,sans-serif;color:#f1f5f9;
+            animation:slideUp 0.25s cubic-bezier(0.34,1.56,0.64,1);
+        ">
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:24px;">
+                <span style="font-size:1.8rem;">${statusIcon}</span>
+                <div>
+                    <h2 style="font-size:1.3rem;font-weight:700;margin:0;color:${statusColor};">System Health</h2>
+                    <p style="margin:2px 0 0;color:#64748b;font-size:0.82rem;">${health.timestamp || new Date().toISOString()}</p>
+                </div>
+            </div>
+            <div>
+                ${row('yt-dlp', health.yt_dlp_available, health.yt_dlp_version ? `v${health.yt_dlp_version}` : (health.yt_dlp_error || 'Not found'))}
+                ${row('Download Directory', health.download_dir_writable, health.download_dir || (health.download_dir_error || ''))}
+                ${row('Pause / Resume', health.supports_pause_resume, health.supports_pause_resume ? 'Supported' : 'Not supported on Windows')}
+                ${row('SSE (Live Updates)', health.sse_supported, `${health.sse_clients ?? 0} client(s) connected`)}
+                ${row('Node.js', true, health.node_version)}
+                ${row('Platform', true, health.platform)}
+                ${row('Active Downloads', true, String(health.active_downloads ?? 0))}
+            </div>
+            <div style="margin-top:24px;text-align:center;">
+                <button id="health-modal-close" style="
+                    background:linear-gradient(135deg,#00ff99,#00cc7a);
+                    color:#000;font-weight:700;font-size:0.9rem;
+                    border:none;border-radius:999px;
+                    padding:10px 32px;cursor:pointer;
+                ">Close</button>
+            </div>
+        </div>
+        <style>
+            @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+            @keyframes slideUp { from{opacity:0;transform:translateY(20px) scale(0.96)} to{opacity:1;transform:translateY(0) scale(1)} }
+        </style>
+    `;
+
+    const close = () => {
+        overlay.style.animation = 'fadeIn 0.15s ease reverse';
+        setTimeout(() => overlay.remove(), 150);
+    };
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    document.body.appendChild(overlay);
+    document.getElementById('health-modal-close')?.addEventListener('click', close);
 }
 
 // Setup settings form functionality

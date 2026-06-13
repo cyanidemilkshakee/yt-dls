@@ -17,10 +17,119 @@ export function showNotification(message, type = 'info') {
 
 // Handle network errors
 export function handleNetworkError(error) {
-    if (error.message.includes('Failed to fetch')) {
+    const isOffline = error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('ERR_CONNECTION_REFUSED');
+    if (isOffline) {
+        showBackendOfflineModal();
         return 'Cannot connect to backend server. Is it running on http://localhost:5000?';
     }
     return error.message;
+}
+
+/**
+ * Show a rich modal popup when the backend server is not reachable.
+ * Safe to call multiple times — only one modal is shown at a time.
+ */
+export function showBackendOfflineModal() {
+    // Deduplicate
+    if (document.getElementById('backend-offline-modal')) return;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'backend-offline-modal';
+    overlay.style.cssText = [
+        'position:fixed', 'inset:0', 'z-index:99999',
+        'display:flex', 'align-items:center', 'justify-content:center',
+        'background:rgba(0,0,0,0.75)', 'backdrop-filter:blur(6px)',
+        'animation:fadeIn 0.2s ease',
+    ].join(';');
+
+    overlay.innerHTML = `
+        <div style="
+            background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);
+            border:1px solid rgba(239,68,68,0.4);
+            border-radius:16px;
+            padding:36px 40px;
+            max-width:460px;
+            width:90%;
+            box-shadow:0 25px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(239,68,68,0.15);
+            text-align:center;
+            font-family:Inter,system-ui,sans-serif;
+            color:#f1f5f9;
+            animation:slideUp 0.25s cubic-bezier(0.34,1.56,0.64,1);
+        ">
+            <div style="
+                width:64px;height:64px;margin:0 auto 20px;
+                background:rgba(239,68,68,0.15);
+                border-radius:50%;
+                display:flex;align-items:center;justify-content:center;
+                border:2px solid rgba(239,68,68,0.4);
+            ">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="#ef4444" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+            </div>
+            <h2 style="font-size:1.4rem;font-weight:700;margin-bottom:10px;color:#f87171;">Backend Not Running</h2>
+            <p style="color:#94a3b8;font-size:0.92rem;line-height:1.6;margin-bottom:24px;">
+                Cannot connect to the YT-DL Studio backend at
+                <code style="background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;color:#e2e8f0;">localhost:5000</code>.
+                Please start the server and try again.
+            </p>
+            <div style="background:rgba(0,0,0,0.3);border-radius:10px;padding:14px 18px;margin-bottom:24px;text-align:left;">
+                <p style="color:#64748b;font-size:0.78rem;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">How to start the server</p>
+                <code style="color:#4ade80;font-size:0.88rem;display:block;">npm start</code>
+                <p style="color:#64748b;font-size:0.78rem;margin-top:6px;">or for development:</p>
+                <code style="color:#4ade80;font-size:0.88rem;display:block;">npm run dev</code>
+            </div>
+            <div style="display:flex;gap:12px;justify-content:center;">
+                <button id="backend-offline-retry" style="
+                    background:linear-gradient(135deg,#00ff99,#00cc7a);
+                    color:#000;font-weight:700;font-size:0.9rem;
+                    border:none;border-radius:999px;
+                    padding:10px 28px;cursor:pointer;
+                    transition:opacity 0.2s;
+                ">Retry Connection</button>
+                <button id="backend-offline-close" style="
+                    background:rgba(255,255,255,0.08);
+                    color:#94a3b8;font-size:0.9rem;
+                    border:1px solid rgba(255,255,255,0.15);border-radius:999px;
+                    padding:10px 28px;cursor:pointer;
+                    transition:background 0.2s;
+                ">Dismiss</button>
+            </div>
+        </div>
+        <style>
+            @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+            @keyframes slideUp { from{opacity:0;transform:translateY(20px) scale(0.96)} to{opacity:1;transform:translateY(0) scale(1)} }
+        </style>
+    `;
+
+    const close = () => {
+        overlay.style.animation = 'fadeIn 0.15s ease reverse';
+        setTimeout(() => overlay.remove(), 150);
+    };
+
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) close();
+    });
+
+    document.body.appendChild(overlay);
+
+    document.getElementById('backend-offline-close')?.addEventListener('click', close);
+    document.getElementById('backend-offline-retry')?.addEventListener('click', async () => {
+        const retryBtn = document.getElementById('backend-offline-retry');
+        if (retryBtn) { retryBtn.textContent = 'Connecting...'; retryBtn.style.opacity = '0.7'; }
+        try {
+            const resp = await fetch('http://localhost:5000/api/health', { signal: AbortSignal.timeout(4000) });
+            if (resp.ok) {
+                close();
+                showNotification('Backend connected successfully!', 'success');
+            } else {
+                throw new Error('Not OK');
+            }
+        } catch {
+            if (retryBtn) { retryBtn.textContent = 'Retry Connection'; retryBtn.style.opacity = '1'; }
+            showNotification('Still cannot reach backend. Is it running?', 'error');
+        }
+    });
 }
 
 // Handle API errors

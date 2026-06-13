@@ -173,6 +173,27 @@ export async function getAllDownloads() {
     }
 }
 
+/**
+ * Batch status — fetch progress for multiple download IDs in a single request.
+ * Returns a Map<downloadId, data|null>.
+ * @param {string[]} ids
+ * @returns {Promise<Map<string, object|null>>}
+ */
+export async function batchStatus(ids) {
+    if (!ids || ids.length === 0) return new Map();
+    try {
+        const query    = ids.map(encodeURIComponent).join(',');
+        const response = await fetch(`${API_BASE_URL}/downloads/status/batch?ids=${query}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const obj = await response.json();
+        // Convert plain object → Map for convenient iteration
+        return new Map(Object.entries(obj));
+    } catch (error) {
+        console.error('Batch status request failed:', error);
+        throw error;
+    }
+}
+
 // Health check
 export async function getSystemHealth() {
     try {

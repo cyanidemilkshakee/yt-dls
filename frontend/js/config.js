@@ -18,7 +18,8 @@ export const state = {
     currentDownloadMode: 'both',
     downloadIdCounter: 0,
     activeDownloadPolling: new Map(),
-    sseConnection: null
+    sseConnection: null,
+    lowPerformanceMode: localStorage.getItem('yt-dls-low-perf-mode') === 'true',
 };
 
 // Settings storage key

@@ -6,7 +6,7 @@ function buildYtDlpCommand(options) {
   command.push(
     '--newline',
     '--progress-template',
-    '{"status":"%(progress.status)s","downloaded_bytes":"%(progress.downloaded_bytes)s","total_bytes":"%(progress.total_bytes)s","speed":"%(progress.speed)s","eta":"%(progress.eta)s"}'
+    '{"status":"%(progress.status)s","downloaded_bytes":"%(progress.downloaded_bytes)s","total_bytes":"%(progress.total_bytes)s","total_bytes_estimate":"%(progress.total_bytes_estimate)s","speed":"%(progress.speed)s","eta":"%(progress.eta)s","filename":"%(info.filepath,progress.filename|)s"}'
   );
 
   const formatString = options.formatCode || 'bestvideo+bestaudio/best';
@@ -35,13 +35,13 @@ function buildYtDlpCommand(options) {
     if (subLang && subLang !== 'none') {
       command.push('--write-subs', '--write-auto-subs');
       if (subLang !== 'all') command.push('--sub-langs', subLang);
+      // embedSubs and convertSubs only make sense when subs are being written
+      if (options.embedSubs) command.push('--embed-subs');
+      if (options.convertSubs) command.push('--convert-subs', options.convertSubs);
     }
     const subFormat = options.subtitleFormat;
     if (subFormat && subFormat !== 'best') command.push('--sub-format', subFormat);
   }
-
-  if (options.embedSubs) command.push('--embed-subs');
-  if (options.convertSubs) command.push('--convert-subs', options.convertSubs);
   if (options.embedThumbnail) command.push('--embed-thumbnail');
   if (options.embedMetadata) command.push('--embed-metadata');
   if (options.addChapters) command.push('--add-chapters');
@@ -104,11 +104,13 @@ function buildYtDlpCommand(options) {
   command.push(
     '--retries', '3',
     '--fragment-retries', '3',
-    '--extractor-retries', '3',
     '--no-colors',
     '--no-warnings',
     '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
   );
+
+  // If user didn't set extractor-retries in advancedSettings, apply default
+  if (!adv['extractor-retries']) command.push('--extractor-retries', '3');
 
   if (options.url && options.url.toLowerCase().includes('playlist')) command.push('--sleep-interval', '1');
   command.push(options.url);
