@@ -1,124 +1,175 @@
-## YT-DL Studio (yt-dls)
+# YT-DL Studio
 
-A modern GUI for yt-dlp with an Express (Node.js) backend and a static HTML/CSS/JS frontend. Works well on Windows, macOS, and Linux.
+A local-first web GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp), built with an Express backend and a dependency-light HTML/CSS/JavaScript frontend.
 
-## Quick start
+## Features
 
-Prerequisites
+- Inspect videos and playlists before downloading.
+- Select video, audio, subtitle, metadata, and post-processing options.
+- Preview the exact server-generated yt-dlp command with secrets redacted.
+- Track downloads through Server-Sent Events, with automatic batch-polling fallback.
+- View per-download speed history and independent video/audio stream progress.
+- Clearly identify combined media streams without double-counting bytes.
+- Cancel downloads, view logs, and pause or resume processes on supported Unix systems.
+- Use secure defaults: loopback binding, origin checks, request limits, private-address blocking, and server-controlled output paths.
+
+## Requirements
+
 - Node.js 22 or newer
-- yt-dlp installed and in your PATH
-- FFmpeg installed and in your PATH (for muxing/post-processing)
+- yt-dlp 2026.06.09 or newer
+- FFmpeg in `PATH` for merging and post-processing
 
-Windows tips
-- yt-dlp: install via Python pip (py -m pip install yt-dlp) or download the standalone yt-dlp.exe and put it in PATH
-- FFmpeg: download from ffmpeg.org (or gyan.dev builds), unzip, and add the bin folder to PATH
+Verify the external tools:
 
-Install and run
-```cmd
-npm install
-npm start
-```
-Then open http://localhost:5000 if your browser doesn’t open automatically.
-
-Development mode (auto-restart)
-```cmd
-npm run dev
-```
-
-Verify tools
-```cmd
+```sh
 yt-dlp --version
 ffmpeg -version
 ```
 
-## What this app does
-- Serves the frontend from the backend at the root URL
-- Calls yt-dlp as a child process to fetch info and download media
-- Streams real-time progress via Server-Sent Events (SSE) and falls back to polling
-- Saves downloads into the downloads/ folder (configurable from the UI)
-- Writes rotating logs to logs/ytdl-YYYY-MM-DD.log
+Install yt-dlp with the included Python requirements file if needed:
 
-## Run-time configuration
-Copy `.env.example` to `.env`, or set environment variables before starting:
-- PORT: HTTP port (default 5000)
-- HOST: bind address (default 127.0.0.1; loopback-only)
-- FRONTEND_ORIGIN: CSV list of extra allowed origins when using a separate frontend
-- DOWNLOAD_DIR: server-controlled download root (default `./downloads`)
-- YTDLP_PATH: custom yt-dlp executable path
-- LOG_LEVEL: Winston log level (default `info`)
-- YTDLP_CHECK_TIMEOUT_MS: Timeout for yt-dlp availability checks (default 15000)
-- MAX_DOWNLOAD_DURATION_MS: Per-download timeout guard (default 1800000 = 30 minutes)
-- MAX_CONCURRENT_DOWNLOADS: process concurrency guard (default 3)
-
-Security-sensitive options are disabled by default. `ALLOW_CUSTOM_DOWNLOAD_PATH`,
-`ALLOW_DANGEROUS_OPTIONS` (`--exec`, `--netrc-cmd`, and `--enable-file-urls`),
-and `ALLOW_PRIVATE_URLS` must be explicitly enabled on a trusted local machine.
-
-Examples (Windows cmd)
-```cmd
-set PORT=5001 && npm start
+```sh
+python -m pip install -r requirements.txt
 ```
+
+On Windows, `py -m pip install -r requirements.txt` can be used instead. A standalone `yt-dlp.exe` also works when its directory is in `PATH` or `YTDLP_PATH` points to it.
+
+## Quick start
+
+```sh
+npm install
+npm start
+```
+
+The application listens on [http://127.0.0.1:5000](http://127.0.0.1:5000) by default and opens the browser automatically.
+
+For development with automatic backend restarts:
+
+```sh
+npm run dev
+```
+
+## Configuration
+
+Copy `.env.example` to `.env` to override the defaults. Node loads this file directly; no dotenv package is required.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `HOST` | `127.0.0.1` | Server bind address |
+| `PORT` | `5000` | HTTP port |
+| `AUTO_OPEN_BROWSER` | `true` | Open the frontend after startup |
+| `FRONTEND_ORIGIN` | local development origins | Comma-separated extra browser origins |
+| `DOWNLOAD_DIR` | `./downloads` | Server-controlled output directory |
+| `LOG_DIR` | `./logs` | Rotating log directory |
+| `YTDLP_PATH` | `yt-dlp` | yt-dlp executable name or absolute path |
+| `LOG_LEVEL` | `info` | Winston log level |
+| `MAX_CONCURRENT_DOWNLOADS` | `3` | Maximum active yt-dlp processes |
+| `MAX_DOWNLOAD_DURATION_MS` | `1800000` | Hard timeout per download |
+| `YTDLP_CHECK_TIMEOUT_MS` | `15000` | yt-dlp availability-check timeout |
+| `INFO_TIMEOUT_MS` | `120000` | Metadata extraction timeout |
+| `INFO_MAX_OUTPUT_BYTES` | `16777216` | Metadata process output limit |
+| `REQUESTS_PER_MINUTE` | `180` | General API rate limit |
+| `DOWNLOAD_REQUESTS_PER_MINUTE` | `20` | Download-action rate limit |
+
+The following settings are intentionally disabled by default:
+
+| Variable | Enables |
+| --- | --- |
+| `ALLOW_CUSTOM_DOWNLOAD_PATH` | Client-selected output directories |
+| `ALLOW_DANGEROUS_OPTIONS` | Options such as `--exec`, `--netrc-cmd`, and `--enable-file-urls` |
+| `ALLOW_PRIVATE_URLS` | Requests to private and loopback network addresses |
+
+Only enable these options on a trusted local machine. The server refuses to combine them with a non-loopback `HOST`.
+
+> [!WARNING]
+> YT-DL Studio has no user authentication. Do not expose it directly to the public internet.
 
 ## Scripts
-- npm start: run backend/server.js
-- npm run dev: run with nodemon (auto-restart)
-- npm run build: run the production validation suite
-- npm run css:watch: regenerate frontend/styles.css while developing styles
-- npm test: run backend command and HTTP integration tests
+
+| Command | Description |
+| --- | --- |
+| `npm start` | Start the production server |
+| `npm run dev` | Start with nodemon |
+| `npm test` | Run command-builder, progress-model, and HTTP integration tests |
+| `npm run check` | Run tests and the backend syntax check |
+| `npm run build` | Run the complete validation suite |
+| `npm run css:watch` | Rebuild `frontend/styles.css` while editing styles |
+
+## How downloads work
+
+1. The frontend submits structured options rather than a shell command.
+2. The backend validates the URL, output path, format selector, and every supported option.
+3. yt-dlp is spawned directly with an argument array; no shell is involved.
+4. Machine-readable progress events are classified as video, audio, or combined media.
+5. Progress is delivered over SSE and displayed with aggregate and per-stream metrics.
+6. Terminal state, logs, and cleanup remain available for one hour.
+
+Downloads are written to `DOWNLOAD_DIR`. Custom paths entered by a client are rejected unless `ALLOW_CUSTOM_DOWNLOAD_PATH=true`.
+
+## API
+
+All endpoints are mounted under `/api`.
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/health` | Runtime, platform, yt-dlp, and output-directory health |
+| `GET` | `/info?url=...` | Extract normalized video or playlist metadata |
+| `GET` | `/downloads` | List tracked downloads |
+| `GET` | `/downloads/events` | SSE progress stream |
+| `GET` | `/downloads/status/batch?ids=...` | Poll several download states at once |
+| `POST` | `/command-preview` | Validate options and return a redacted command preview |
+| `POST` | `/download` | Start a download |
+| `GET` | `/download/:id/status` | Get aggregate, video, and audio progress |
+| `POST` | `/download/:id/cancel` | Cancel an active download |
+| `POST` | `/download/:id/pause` | Pause on supported Unix systems |
+| `POST` | `/download/:id/resume` | Resume on supported Unix systems |
+| `GET` | `/download/:id/log` | Get the in-memory download log |
+| `DELETE` | `/download/:id` | Remove a finished download record |
+| `GET` | `/list-impersonate-targets` | List yt-dlp impersonation targets |
+| `GET` | `/list-ap-msos` | List Adobe Pass providers |
+
+Pause and resume return HTTP 501 on Windows; cancellation remains supported.
 
 ## Project structure
-```
+
+```text
 backend/
-  server.js              # Express app (serves frontend and API)
-  routes/
-    health.js            # Health/system checks and helper listings
-    info.js              # GET /api/info?url=... (metadata)
-    download.js          # Start/cancel/pause/resume/status + SSE
-    status.js            # List downloads
-  services/
-    commandBuilder.js    # Builds yt-dlp command based on options
-    infoProcessor.js     # Normalizes yt-dlp info response
-    progressTracker.js   # In-memory progress store + SSE broadcast
-  utils/
-    logger.js            # Winston with daily rotation
-    platform.js          # Windows-safe process termination
-    sanitize.js          # Filenames sanitization
+  config.js                    Environment parsing and runtime paths
+  server.js                    Express app, security headers, and shutdown
+  middleware/rateLimit.js      In-memory API rate limiter
+  routes/                      Health, metadata, downloads, and status APIs
+  services/commandBuilder.js   Validated yt-dlp argument construction
+  services/progressTracker.js  Aggregate and per-stream progress state
+  utils/processRunner.js       Bounded child-process execution
+  utils/validation.js          URL, path, filename, and option validation
 frontend/
-  index.html             # Main UI (modules in frontend/js)
-  styles.css             # Tailwind-based stylesheet
-  js/                    # ES modules (app, api, config, etc.)
-downloads/               # Default download output (gitignored)
-logs/                    # Rotating logs (gitignored)
-package.json             # Node scripts and deps
+  index.html                   Main application
+  settings.html                Settings view
+  styles.css                   Generated Tailwind and application styles
+  js/api.js                    HTTP client and error handling
+  js/download-manager.js       SSE, polling, download cards, and controls
+  js/speed-chart.js            Canvas speed-history chart
+test/
+  commandBuilder.test.js
+  progressTracker.test.js
+  server.test.js
+downloads/                     Default output directory
+logs/                          Rotating application logs
 ```
-
-## API overview (mounted under /api)
-- GET /api/health: server/platform status and yt-dlp/dir checks
-- GET /api/info?url=<url>: metadata for a URL or playlist (normalized)
-- GET /api/downloads: list current downloads
-- GET /api/downloads/events: SSE stream of progress updates
-- POST /api/command-preview: validate options and return the exact redacted yt-dlp command
-- POST /api/download: start a download; body: { url, formatCode, filename, downloadPath, ... }
-- GET /api/download/:downloadId/status: progress snapshot
-- POST /api/download/:downloadId/cancel: cancel
-- POST /api/download/:downloadId/pause: pause (Unix only)
-- POST /api/download/:downloadId/resume: resume (Unix only)
-- GET /api/download/:downloadId/log: log lines for a download
-- GET /api/list-impersonate-targets: yt-dlp --list-impersonate-targets
-- GET /api/list-ap-msos: yt-dlp --ap-list-mso
-
-Notes for Windows
-- Pause/Resume endpoints return 501 (not supported on Windows); use Cancel instead
-- The server uses taskkill as a fallback when terminating processes
 
 ## Troubleshooting
-- “yt-dlp is not available”: ensure yt-dlp is in PATH and run yt-dlp --version
-- “FFmpeg not found” or merge errors: install FFmpeg and add bin to PATH
-- Frontend doesn’t load: check http://localhost:5000 and logs in logs/
-- CORS errors: either open the built-in frontend at the root or set FRONTEND_ORIGIN when using a separate frontend origin
+
+- **yt-dlp is not available:** confirm `yt-dlp --version` works in the same terminal, or configure `YTDLP_PATH`.
+- **FFmpeg is missing or merging fails:** install FFmpeg and ensure `ffmpeg -version` works.
+- **The page does not open:** browse to `http://127.0.0.1:5000` and inspect `logs/`.
+- **CORS request rejected:** use the built-in frontend or add the exact separate frontend origin to `FRONTEND_ORIGIN`.
+- **A URL is rejected as private:** this is SSRF protection; only opt in with `ALLOW_PRIVATE_URLS=true` on a trusted loopback deployment.
+- **Pause or resume fails on Windows:** use Cancel; process suspension is intentionally unsupported there.
+
+## Legal note
+
+Use yt-dlp only for content you are authorized to access and download. You are responsible for complying with applicable laws and service terms.
 
 ## License
+
 MIT
-
-- `POST /api/download/:id/resume` - Resume download (Unix only)
-
