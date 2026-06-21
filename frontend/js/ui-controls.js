@@ -49,6 +49,7 @@ function initThemeToggle() {
         
         // Update 3D background theme
         updateBackgroundTheme(theme === 'dark');
+        document.dispatchEvent(new CustomEvent('themechange', { detail: { theme } }));
         
         // Remove transition after animation
         setTimeout(() => {

@@ -1,4 +1,11 @@
 // Utility functions for UI operations
+import { API_BASE_URL } from './config.js';
+
+export function escapeHTML(value) {
+    return String(value ?? '').replace(/[&<>'"]/g, (character) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+    })[character]);
+}
 
 // Show notification
 export function showNotification(message, type = 'info') {
@@ -20,7 +27,7 @@ export function handleNetworkError(error) {
     const isOffline = error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('ERR_CONNECTION_REFUSED');
     if (isOffline) {
         showBackendOfflineModal();
-        return 'Cannot connect to backend server. Is it running on http://localhost:5000?';
+        return `Cannot connect to the backend at ${API_BASE_URL}.`;
     }
     return error.message;
 }
@@ -118,7 +125,7 @@ export function showBackendOfflineModal() {
         const retryBtn = document.getElementById('backend-offline-retry');
         if (retryBtn) { retryBtn.textContent = 'Connecting...'; retryBtn.style.opacity = '0.7'; }
         try {
-            const resp = await fetch('http://localhost:5000/api/health', { signal: AbortSignal.timeout(4000) });
+            const resp = await fetch(`${API_BASE_URL}/health`, { signal: AbortSignal.timeout(4000) });
             if (resp.ok) {
                 close();
                 showNotification('Backend connected successfully!', 'success');
@@ -137,7 +144,7 @@ export function handleApiError(error, context = 'API request') {
     console.error(`${context} failed:`, error);
     
     if (error.message.includes('Failed to fetch')) {
-        return 'Cannot connect to backend server. Please ensure the backend is running on http://localhost:5000';
+        return `Cannot connect to the backend at ${API_BASE_URL}.`;
     }
     
     if (error.status) {

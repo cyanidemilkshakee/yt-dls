@@ -33,8 +33,14 @@ import {
     handleNetworkError,
     formatFileSize,
     formatTime,
+    escapeHTML,
     addEventListenerSafe,
 } from './ui-utils.js';
+import {
+    updateSpeedChart,
+    redrawSpeedChart,
+    disposeSpeedChart,
+} from './speed-chart.js';
 
 // ─── Module state ─────────────────────────────────────────────────────────────
 
@@ -59,6 +65,7 @@ export function initDownloadManager() {
     initSSE();
     setupDownloadControls();
     restoreExistingDownloads();
+    document.addEventListener('themechange', redrawAllSpeedCharts);
 }
 
 // ─── SSE ──────────────────────────────────────────────────────────────────────
@@ -199,6 +206,8 @@ async function restoreExistingDownloads() {
                     thumbnail:  '',
                     downloadId: d.download_id,
                 });
+                const refs = _domCache.get(d.download_id);
+                if (refs) updateDownloadUI(refs, d);
             });
             showNotification(`Restored ${data.downloads.length} download(s).`, 'info');
         }
@@ -250,6 +259,12 @@ export function addDownload(options) {
         playIcon:       clone.querySelector('.play-icon'),
         logContainer:   clone.querySelector('.log-container'),
         logContent:     clone.querySelector('.log-content'),
+        speedCanvas:    clone.querySelector('.speed-history-canvas'),
+        speedPeakText:  clone.querySelector('.speed-peak-text'),
+        speedSummary:   clone.querySelector('.speed-history-summary'),
+        speedSamples:   [],
+        videoStream:    getStreamRefs(clone, '.video-stream-row'),
+        audioStream:    getStreamRefs(clone, '.audio-stream-row'),
     };
     _domCache.set(options.downloadId, refs);
     _activeIds.add(options.downloadId);
@@ -299,6 +314,15 @@ export function updateDownloadUI(refs, data) {
             sizeText.textContent = 'Preparing...';
         }
     }
+
+    updateStreamUI(refs.videoStream, data.video_progress, 'Video');
+    updateStreamUI(refs.audioStream, data.audio_progress, 'Audio');
+    updateSpeedChart(refs.speedCanvas, refs.speedSamples, {
+        speed: Number(data.speed) || 0,
+        status: data.status || 'waiting',
+        summaryElement: refs.speedSummary,
+        peakElement: refs.speedPeakText,
+    });
 
     // Terminal state handling
     const isTerminal = ['completed', 'failed', 'cancelled'].includes(data.status);
@@ -367,7 +391,7 @@ export function updateDownloadUI(refs, data) {
             break;
         case 'failed': {
             const errMsg = data.error || 'Unknown error';
-            statusText.innerHTML = `<span class="font-semibold text-red-400">Failed: ${errMsg}</span>`;
+            statusText.innerHTML = `<span class="font-semibold text-red-400">Failed: ${escapeHTML(errMsg)}</span>`;
             if (speedText) speedText.style.visibility = 'hidden';
             if (etaText)   etaText.style.visibility   = 'hidden';
             break;
@@ -388,7 +412,7 @@ export function updateDownloadUI(refs, data) {
             if (pauseResumeBtn) pauseResumeBtn.disabled = false;
             break;
         default:
-            statusText.innerHTML = `<span class="font-semibold">${data.status}...</span>`;
+            statusText.innerHTML = `<span class="font-semibold">${escapeHTML(data.status)}...</span>`;
             if (speedText) speedText.style.visibility = 'visible';
             if (etaText)   etaText.style.visibility   = 'visible';
             if (pauseResumeBtn) pauseResumeBtn.disabled = true;
@@ -421,6 +445,7 @@ function setupDownloadItemEvents(refs, options) {
     addEventListenerSafe(removeBtn, 'click', async () => {
         try {
             _activeIds.delete(options.downloadId);
+            disposeSpeedChart(refs.speedCanvas);
             _domCache.delete(options.downloadId);
             await removeDownload(options.downloadId);
         } catch (_) { /* still remove from DOM */ }
@@ -526,6 +551,8 @@ function clearCompletedDownloads() {
 
 export function cleanup() {
     _stopBatchPoll();
+    document.removeEventListener('themechange', redrawAllSpeedCharts);
+    for (const refs of _domCache.values()) disposeSpeedChart(refs.speedCanvas);
     _domCache.clear();
     _activeIds.clear();
     if (sseConnection) {
@@ -538,4 +565,71 @@ export function cleanup() {
 
 export function getActiveCount() {
     return _activeIds.size;
+}
+
+function getStreamRefs(container, selector) {
+    const row = container.querySelector(selector);
+    return {
+        row,
+        statusText: row?.querySelector('.stream-status-text'),
+        track: row?.querySelector('.stream-progress-track'),
+        fill: row?.querySelector('.stream-progress-fill'),
+        sizeText: row?.querySelector('.stream-size-text'),
+        speedText: row?.querySelector('.stream-speed-text'),
+        progressText: row?.querySelector('.stream-progress-text'),
+    };
+}
+
+function updateStreamUI(refs, stream = {}, label) {
+    if (!refs?.row) return;
+    const expected = stream.expected !== false;
+    const status = expected ? (stream.status || 'waiting') : 'not_requested';
+    const statusLabels = {
+        waiting: 'Queued',
+        downloading: 'Downloading',
+        processing: 'Processing',
+        completed: 'Complete',
+        failed: 'Failed',
+        cancelled: 'Cancelled',
+        paused: 'Paused',
+        not_requested: 'Not requested',
+    };
+    const baseStatusLabel = statusLabels[status] || status.replaceAll('_', ' ');
+    const statusLabel = stream.combined && expected ? `${baseStatusLabel} (combined)` : baseStatusLabel;
+    const progress = expected
+        ? Math.max(0, Math.min(100, Number(stream.progress) || 0))
+        : 0;
+    const downloadedBytes = Number(stream.downloadedBytes) || 0;
+    const totalBytes = Number(stream.totalBytes) || 0;
+    const speed = Number(stream.speed) || 0;
+    const eta = Number(stream.eta) || 0;
+
+    refs.row.dataset.status = status;
+    if (refs.statusText) refs.statusText.textContent = statusLabel;
+    if (refs.fill) refs.fill.style.width = `${progress}%`;
+    if (refs.progressText) refs.progressText.textContent = expected ? `${progress.toFixed(1)}%` : '--';
+    if (refs.sizeText) {
+        refs.sizeText.textContent = totalBytes > 0
+            ? `${stream.combined ? 'Shared ' : ''}${formatFileSize(downloadedBytes)} / ${formatFileSize(totalBytes)}`
+            : downloadedBytes > 0 ? formatFileSize(downloadedBytes) : '--';
+    }
+    if (refs.speedText) {
+        refs.speedText.textContent = speed > 0
+            ? `${formatFileSize(speed)}/s${eta > 0 ? ` · ${formatTime(eta)}` : ''}`
+            : '--';
+    }
+    if (refs.track) {
+        refs.track.setAttribute('aria-valuenow', String(Math.round(progress)));
+        refs.track.setAttribute('aria-valuetext', `${label} ${statusLabel}, ${progress.toFixed(1)} percent`);
+    }
+    refs.row.setAttribute(
+        'aria-label',
+        expected
+            ? `${label}: ${statusLabel}, ${progress.toFixed(1)} percent${totalBytes > 0 ? `, ${formatFileSize(downloadedBytes)} of ${formatFileSize(totalBytes)}` : ''}`
+            : `${label}: not requested`
+    );
+}
+
+function redrawAllSpeedCharts() {
+    for (const refs of _domCache.values()) redrawSpeedChart(refs.speedCanvas);
 }

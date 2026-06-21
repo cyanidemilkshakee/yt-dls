@@ -1,5 +1,8 @@
 // Configuration constants and global settings
-export const API_BASE_URL = 'http://localhost:5000/api';
+const runtimeLocation = globalThis.location;
+export const API_BASE_URL = runtimeLocation && runtimeLocation.protocol !== 'file:'
+    ? `${runtimeLocation.origin}/api`
+    : 'http://localhost:5000/api';
 
 // Platform capabilities
 export let platformInfo = {
@@ -24,6 +27,27 @@ export const state = {
 
 // Settings storage key
 export const SETTINGS_KEY = 'yt-dls-advanced-settings';
+export const SECRET_SETTINGS_KEY = 'yt-dls-session-secrets';
+export const SECRET_SETTING_NAMES = new Set([
+    'password', 'twofactor', 'video-password', 'ap-password',
+    'client-certificate-password'
+]);
+
+function readJsonStorage(storage, key) {
+    try { return JSON.parse(storage.getItem(key) || '{}'); }
+    catch (error) {
+        console.warn(`Ignoring invalid saved settings for ${key}:`, error);
+        storage.removeItem(key);
+        return {};
+    }
+}
+
+export function getAdvancedSettings() {
+    return {
+        ...readJsonStorage(localStorage, SETTINGS_KEY),
+        ...readJsonStorage(sessionStorage, SECRET_SETTINGS_KEY)
+    };
+}
 
 // Download options defaults
 export const DEFAULT_DOWNLOAD_OPTIONS = {

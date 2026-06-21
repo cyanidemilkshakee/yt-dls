@@ -26,7 +26,6 @@ router.get('/downloads', (req, res) => {
     // Supplement with process-level metadata when available
     if (activeInfo) {
       downloadData.url     = activeInfo.url;
-      downloadData.command = activeInfo.command;
     }
 
     downloads.push(downloadData);
@@ -40,7 +39,6 @@ router.get('/downloads', (req, res) => {
       url:         info.url,
       status:      info.status,
       started_at:  info.started_at,
-      command:     info.command,
       error:       info.error || null,
     });
   }

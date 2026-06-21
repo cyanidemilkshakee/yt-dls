@@ -1,238 +1,147 @@
 import { API_BASE_URL, updatePlatformInfo } from './config.js';
 
-// Fetch platform info on load
+async function apiRequest(path, options = {}) {
+    const { timeoutMs = 30_000, ...fetchOptions } = options;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const response = await fetch(`${API_BASE_URL}${path}`, {
+            ...fetchOptions,
+            headers: { Accept: 'application/json', ...(fetchOptions.headers || {}) },
+            signal: controller.signal
+        });
+        const contentType = response.headers.get('content-type') || '';
+        const payload = contentType.includes('application/json')
+            ? await response.json()
+            : { error: (await response.text()).trim() || `HTTP ${response.status}` };
+        if (!response.ok) {
+            const error = new Error(payload.error || `HTTP ${response.status}`);
+            error.status = response.status;
+            error.code = payload.code || payload.error_code;
+            error.payload = payload;
+            throw error;
+        }
+        return payload;
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            const timeoutError = new Error('The backend request timed out.');
+            timeoutError.code = 'REQUEST_TIMEOUT';
+            throw timeoutError;
+        }
+        throw error;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 export async function fetchPlatformInfo() {
     try {
-        const response = await fetch(`${API_BASE_URL}/health`);
-        if (response.ok) {
-            const health = await response.json();
-            const platformInfo = {
-                platform: health.platform || 'unknown',
-                supports_pause_resume: health.supports_pause_resume !== false
-            };
-            updatePlatformInfo(platformInfo);
-            return platformInfo;
-        }
+        const health = await getSystemHealth();
+        const platform = {
+            platform: health.platform || 'unknown',
+            supports_pause_resume: health.supports_pause_resume !== false,
+            capabilities: health.capabilities || {},
+            max_concurrent_downloads: health.max_concurrent_downloads || null
+        };
+        updatePlatformInfo(platform);
+        return platform;
     } catch (error) {
         console.warn('Failed to fetch platform info:', error);
+        if (error.payload) {
+            updatePlatformInfo(error.payload);
+            return error.payload;
+        }
+        return null;
     }
-    return null;
 }
 
-// Fetch video information with retry logic
 export async function fetchVideoInfo(url, retries = 3) {
+    let lastError;
     for (let attempt = 1; attempt <= retries; attempt++) {
         try {
-            const response = await fetch(`${API_BASE_URL}/info?url=${encodeURIComponent(url)}`);
-            
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                const error = new Error(errorData.error || `HTTP ${response.status}`);
-                error.status = response.status;
-                error.code = errorData.error_code;
-                throw error;
-            }
-            
-            const data = await response.json();
-            if (data.error) {
-                const error = new Error(data.error);
-                error.code = data.error_code;
-                throw error;
-            }
-            
-            return data;
-            
+            return await apiRequest(`/info?url=${encodeURIComponent(url)}`, { timeoutMs: 130_000 });
         } catch (error) {
-            console.warn(`Attempt ${attempt}/${retries} failed:`, error);
-            
-            if (error.status === 404 || error.status === 403 || error.code === 'UNSUPPORTED_URL') {
-                throw error;
-            }
-            
-            if (attempt === retries) {
-                throw error;
-            }
-            
-            const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
-            console.log(`Waiting ${delay}ms before retry...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
+            lastError = error;
+            const retryable = !error.status || error.status === 429 || error.status >= 500;
+            if (!retryable || attempt === retries) throw error;
+            await new Promise((resolve) => setTimeout(resolve, Math.min(750 * 2 ** (attempt - 1), 5000)));
         }
     }
+    throw lastError;
 }
 
-// Start download
-export async function startDownload(options) {
-    try {
-        const response = await fetch(`${API_BASE_URL}/download`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(options)
-        });
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const data = await response.json();
-        if (data.error) throw new Error(data.error);
-        return data;
-    } catch (error) {
-        console.error('Error starting download:', error);
-        throw error;
-    }
+export function startDownload(options) {
+    return apiRequest('/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(options),
+        timeoutMs: 15_000
+    });
 }
 
-// Update download status
+export function previewCommand(options) {
+    return apiRequest('/command-preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(options),
+        timeoutMs: 10_000
+    });
+}
+
 export async function updateDownloadStatus(downloadId) {
-    try {
-        const response = await fetch(`${API_BASE_URL}/download/${downloadId}/status`);
-        if (!response.ok) {
-            if (response.status === 404) {
-                console.warn(`Download ${downloadId} not found`);
-                return null;
-            }
-            throw new Error(`HTTP ${response.status}`);
-        }
-        
-        return await response.json();
-    } catch (error) {
-        console.error(`Error updating status for ${downloadId}:`, error);
-        throw error;
-    }
+    try { return await apiRequest(`/download/${encodeURIComponent(downloadId)}/status`); }
+    catch (error) { if (error.status === 404) return null; throw error; }
 }
 
-// Get download log
-export async function getDownloadLog(downloadId) {
-    try {
-        const response = await fetch(`${API_BASE_URL}/download/${downloadId}/log`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return await response.json();
-    } catch (error) {
-        console.error(`Error getting log for ${downloadId}:`, error);
-        throw error;
-    }
+export function getDownloadLog(downloadId) {
+    return apiRequest(`/download/${encodeURIComponent(downloadId)}/log`);
 }
 
-// Cancel download
-export async function cancelDownload(downloadId) {
-    try {
-        const response = await fetch(`${API_BASE_URL}/download/${downloadId}/cancel`, { 
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error);
-        }
-        return true;
-    } catch (error) {
-        console.error('Cancel request failed:', error);
-        throw error;
-    }
+export function cancelDownload(downloadId) {
+    return apiRequest(`/download/${encodeURIComponent(downloadId)}/cancel`, { method: 'POST' });
 }
 
-// Remove download
 export async function removeDownload(downloadId) {
     try {
-        const response = await fetch(`${API_BASE_URL}/download/${downloadId}`, { 
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        return response.ok;
+        await apiRequest(`/download/${encodeURIComponent(downloadId)}`, { method: 'DELETE' });
+        return true;
     } catch (error) {
         console.warn('Remove request failed:', error);
         return false;
     }
 }
 
-// Pause/Resume download
-export async function pauseResumeDownload(downloadId, action) {
-    try {
-        const response = await fetch(`${API_BASE_URL}/download/${downloadId}/${action}`, { 
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || `Failed to ${action}`);
-        }
-        
-        return true;
-    } catch (error) {
-        console.error(`${action} request failed:`, error);
-        throw error;
-    }
+export function pauseResumeDownload(downloadId, action) {
+    if (!['pause', 'resume'].includes(action)) return Promise.reject(new Error('Invalid download action'));
+    return apiRequest(`/download/${encodeURIComponent(downloadId)}/${action}`, { method: 'POST' });
 }
 
-// Get all downloads
-export async function getAllDownloads() {
-    try {
-        const response = await fetch(`${API_BASE_URL}/downloads`);
-        if (!response.ok) throw new Error("Could not connect to backend.");
-        return await response.json();
-    } catch (error) {
-        console.error("Failed to fetch downloads:", error);
-        throw error;
-    }
+export function getAllDownloads() {
+    return apiRequest('/downloads');
 }
 
-/**
- * Batch status — fetch progress for multiple download IDs in a single request.
- * Returns a Map<downloadId, data|null>.
- * @param {string[]} ids
- * @returns {Promise<Map<string, object|null>>}
- */
 export async function batchStatus(ids) {
-    if (!ids || ids.length === 0) return new Map();
-    try {
-        const query    = ids.map(encodeURIComponent).join(',');
-        const response = await fetch(`${API_BASE_URL}/downloads/status/batch?ids=${query}`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const obj = await response.json();
-        // Convert plain object → Map for convenient iteration
-        return new Map(Object.entries(obj));
-    } catch (error) {
-        console.error('Batch status request failed:', error);
-        throw error;
-    }
+    if (!ids?.length) return new Map();
+    const uniqueIds = [...new Set(ids)].slice(0, 100);
+    const query = uniqueIds.map(encodeURIComponent).join(',');
+    const result = await apiRequest(`/downloads/status/batch?ids=${query}`);
+    return new Map(Object.entries(result));
 }
 
-// Health check
 export async function getSystemHealth() {
-    try {
-        const response = await fetch(`${API_BASE_URL}/health`);
-        if (!response.ok) {
-            const text = await response.text().catch(() => '');
-            throw new Error(`Health check failed: HTTP ${response.status}${text ? ` - ${text}` : ''}`);
-        }
-        return await response.json();
-    } catch (error) {
-        console.error('Health check failed:', error);
+    try { return await apiRequest('/health', { timeoutMs: 15_000 }); }
+    catch (error) {
+        // A degraded health response deliberately uses 503 but still contains
+        // useful diagnostics for the existing system-health dialog.
+        if (error.status === 503 && error.payload) return error.payload;
         throw error;
     }
 }
 
-// Get impersonate targets
-export async function getImpersonateTargets() {
-    try {
-        const response = await fetch(`${API_BASE_URL}/list-impersonate-targets`);
-        if (!response.ok) throw new Error(`Failed to fetch: ${response.statusText}`);
-        const data = await response.json();
-        if (data.error) throw new Error(data.error);
-        return data;
-    } catch (error) {
-        console.error('Error fetching impersonate targets:', error);
-        throw error;
-    }
+export function getImpersonateTargets() {
+    return apiRequest('/list-impersonate-targets', { timeoutMs: 15_000 });
 }
 
-// Get AP MSOs
-export async function getApMsos() {
-    try {
-        const response = await fetch(`${API_BASE_URL}/list-ap-msos`);
-        if (!response.ok) throw new Error(`Failed to fetch: ${response.statusText}`);
-        const data = await response.json();
-        if (data.error) throw new Error(data.error);
-        return data;
-    } catch (error) {
-        console.error('Error fetching AP MSOs:', error);
-        throw error;
-    }
+export function getApMsos() {
+    return apiRequest('/list-ap-msos', { timeoutMs: 15_000 });
 }

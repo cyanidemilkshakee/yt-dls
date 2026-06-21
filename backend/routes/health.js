@@ -1,111 +1,79 @@
 const express = require('express');
-const { spawn } = require('child_process');
-const fs = require('fs').promises;
-const path = require('path');
+const fs = require('fs');
 const os = require('os');
 const logger = require('../utils/logger');
+const { config } = require('../config');
 const { activeDownloads, sseClients } = require('../services/progressTracker');
+const { runProcess } = require('../utils/processRunner');
 
 const router = express.Router();
 
 router.get('/health', async (req, res) => {
-  const DOWNLOAD_DIR = path.join(__dirname, '..', '..', 'downloads');
-  const YTDLP_CHECK_TIMEOUT_MS = Number(process.env.YTDLP_CHECK_TIMEOUT_MS || 10000);
+  const health = {
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    platform: os.platform(),
+    node_version: process.version,
+    supports_pause_resume: os.platform() !== 'win32',
+    yt_dlp_available: false,
+    yt_dlp_version: null,
+    download_dir: config.DOWNLOAD_DIR,
+    download_dir_writable: false,
+    active_downloads: activeDownloads.size,
+    max_concurrent_downloads: config.MAX_CONCURRENT_DOWNLOADS,
+    sse_supported: true,
+    sse_clients: sseClients.size,
+    capabilities: {
+      custom_download_paths: config.ALLOW_CUSTOM_DOWNLOAD_PATH,
+      dangerous_options: config.ALLOW_DANGEROUS_OPTIONS,
+      private_urls: config.ALLOW_PRIVATE_URLS,
+    },
+  };
+
   try {
-    const health = {
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
-      platform: os.platform(),
-      node_version: process.version,
-  supports_pause_resume: os.platform() !== 'win32',
-      yt_dlp_available: false,
-      yt_dlp_version: null,
-      download_dir: DOWNLOAD_DIR,
-      download_dir_writable: false,
-  active_downloads: activeDownloads.size || 0,
-  sse_supported: true,
-  sse_clients: sseClients.size || 0,
-    };
-
-    try {
-      const ytdlpVersion = await new Promise((resolve, reject) => {
-        const ytdlp = spawn('yt-dlp', ['--version'], { stdio: 'pipe' });
-        let version = '';
-        ytdlp.stdout.on('data', (d) => (version += d.toString().trim()));
-        ytdlp.on('close', (code) => (code === 0 ? resolve(version) : reject(new Error(`yt-dlp not working (code ${code})`))));
-        ytdlp.on('error', (err) => reject(new Error(`yt-dlp process error: ${err.message}`)));
-        setTimeout(() => reject(new Error('yt-dlp check timeout')), YTDLP_CHECK_TIMEOUT_MS);
-      });
-      health.yt_dlp_available = true;
-      health.yt_dlp_version = ytdlpVersion;
-    } catch (error) {
-      health.yt_dlp_error = error.message;
-      logger.warn(`yt-dlp check failed: ${error.message}`);
-    }
-
-    try {
-      await fs.access(DOWNLOAD_DIR, fs.constants.F_OK | fs.constants.W_OK);
-      health.download_dir_writable = true;
-    } catch (error) {
-      health.download_dir_error = error.message;
-      logger.warn(`Download directory check failed: ${error.message}`);
-    }
-
-    if (!health.yt_dlp_available) {
-      health.status = 'degraded';
-      health.status_reason = 'yt-dlp not available';
-    } else if (!health.download_dir_writable) {
-      health.status = 'degraded';
-      health.status_reason = 'download directory not writable';
-    }
-
-    res.json(health);
+    const result = await runProcess(config.YTDLP_PATH, ['--version'], { timeoutMs: config.YTDLP_CHECK_TIMEOUT_MS, maxOutputBytes: 64 * 1024 });
+    if (result.code !== 0) throw new Error(result.stderr.trim() || `yt-dlp exited with code ${result.code}`);
+    health.yt_dlp_available = true;
+    health.yt_dlp_version = result.stdout.trim();
   } catch (error) {
-    logger.error(`Health check failed: ${error.message}`);
-    res.status(500).json({ status: 'error', timestamp: new Date().toISOString(), error: error.message });
+    health.yt_dlp_error = error.message;
+    logger.warn(`yt-dlp check failed: ${error.message}`);
   }
+
+  try {
+    await fs.promises.access(config.DOWNLOAD_DIR, fs.constants.F_OK | fs.constants.W_OK);
+    health.download_dir_writable = true;
+  } catch (error) {
+    health.download_dir_error = error.message;
+  }
+
+  if (!health.yt_dlp_available || !health.download_dir_writable) {
+    health.status = 'degraded';
+    health.status_reason = !health.yt_dlp_available ? 'yt-dlp not available' : 'download directory not writable';
+  }
+  res.status(health.status === 'healthy' ? 200 : 503).json(health);
 });
 
-router.get('/list-impersonate-targets', async (req, res) => {
+async function listYtDlpValues(args, res, label, parseItems) {
   try {
-    const result = await new Promise((resolve, reject) => {
-      const p = require('child_process').spawn('yt-dlp', ['--list-impersonate-targets'], { stdio: ['ignore', 'pipe', 'pipe'] });
-      let out = ''; let err = '';
-      p.stdout.on('data', (d) => (out += d.toString()));
-      p.stderr.on('data', (d) => (err += d.toString()));
-      p.on('close', (code) => {
-        if (code !== 0) return reject(new Error(err || `exit ${code}`));
-        const items = out.trim().split('\n').filter((l) => l && !l.toLowerCase().startsWith('['));
-        resolve({ items });
-      });
-      p.on('error', (e) => reject(e));
-    });
-    res.json(result);
+    const result = await runProcess(config.YTDLP_PATH, args, { timeoutMs: config.YTDLP_CHECK_TIMEOUT_MS, maxOutputBytes: 512 * 1024 });
+    if (result.code !== 0 && !result.stdout.trim()) throw new Error(result.stderr.trim() || `yt-dlp exited with code ${result.code}`);
+    const lines = result.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const items = parseItems(lines);
+    res.json({ items });
   } catch (error) {
-    logger.error(`Error listing impersonate targets: ${error.message}`);
-    res.status(500).json({ error: error.message });
+    logger.error(`Could not list ${label}: ${error.message}`);
+    res.status(503).json({ error: `Could not list ${label}`, code: 'YTDLP_QUERY_FAILED' });
   }
-});
+}
 
-router.get('/list-ap-msos', async (req, res) => {
-  try {
-    const result = await new Promise((resolve, reject) => {
-      const p = require('child_process').spawn('yt-dlp', ['--ap-list-mso'], { stdio: ['ignore', 'pipe', 'pipe'] });
-      let out = ''; let err = '';
-      p.stdout.on('data', (d) => (out += d.toString()));
-      p.stderr.on('data', (d) => (err += d.toString()));
-      p.on('close', (code) => {
-        if (code !== 0) return reject(new Error(err || `exit ${code}`));
-        const items = out.trim().split('\n').filter((l) => l && !l.toLowerCase().startsWith('['));
-        resolve({ items });
-      });
-      p.on('error', (e) => reject(e));
-    });
-    res.json(result);
-  } catch (error) {
-    logger.error(`Error listing AP MSOs: ${error.message}`);
-    res.status(500).json({ error: error.message });
-  }
-});
+router.get('/list-impersonate-targets', (req, res) => listYtDlpValues(
+  ['--list-impersonate-targets'], res, 'impersonation targets',
+  (lines) => lines.filter((line) => !line.startsWith('[') && !line.includes('unavailable') && !/^(Client|[-]+$)/i.test(line)).map((line) => line.split(/\s+/)[0])
+));
+router.get('/list-ap-msos', (req, res) => listYtDlpValues(
+  ['--ap-list-mso'], res, 'TV providers',
+  (lines) => lines.filter((line) => !/^(Supported TV Providers:|mso\s+mso name)$/i.test(line)).map((line) => line.split(/\s+/)[0])
+));
 
 module.exports = router;

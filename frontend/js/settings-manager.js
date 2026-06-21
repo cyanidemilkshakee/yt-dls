@@ -1,4 +1,9 @@
-import { SETTINGS_KEY } from './config.js';
+import {
+    SETTINGS_KEY,
+    SECRET_SETTINGS_KEY,
+    SECRET_SETTING_NAMES,
+    getAdvancedSettings
+} from './config.js';
 import { 
     getSystemHealth, 
     getImpersonateTargets, 
@@ -148,6 +153,7 @@ function setupSettingsForm() {
     // Save settings function
     function saveSettings(showSuccessNotification = true) {
         const settings = {};
+        const secrets = {};
         const formData = new FormData(settingsForm);
 
         for (const [key, value] of formData.entries()) {
@@ -155,11 +161,13 @@ function setupSettingsForm() {
             if (input.type === 'checkbox') {
                 settings[key] = input.checked;
             } else if (value.trim() !== '') {
-                settings[key] = value;
+                if (SECRET_SETTING_NAMES.has(key)) secrets[key] = value;
+                else settings[key] = value;
             }
         }
         
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+        sessionStorage.setItem(SECRET_SETTINGS_KEY, JSON.stringify(secrets));
         if (showSuccessNotification) {
              showNotification('Settings saved automatically.', 'success');
         }
@@ -254,11 +262,8 @@ function loadSettings() {
     const settingsForm = document.getElementById('settings-form');
     if (!settingsForm) return;
 
-    const savedSettings = localStorage.getItem(SETTINGS_KEY);
-    if (!savedSettings) return;
-
     try {
-        const settings = JSON.parse(savedSettings);
+        const settings = getAdvancedSettings();
 
         for (const key in settings) {
             if (settingsForm.elements[key]) {
@@ -277,26 +282,25 @@ function loadSettings() {
 
 // Get current settings
 export function getSettings() {
-    const savedSettings = localStorage.getItem(SETTINGS_KEY);
-    if (!savedSettings) return {};
-    
-    try {
-        return JSON.parse(savedSettings);
-    } catch (error) {
-        console.error('Error parsing settings:', error);
-        return {};
-    }
+    return getAdvancedSettings();
 }
 
 // Save a specific setting
 export function saveSetting(key, value) {
     const settings = getSettings();
     settings[key] = value;
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    const persistent = {};
+    const secrets = {};
+    for (const [name, settingValue] of Object.entries(settings)) {
+        (SECRET_SETTING_NAMES.has(name) ? secrets : persistent)[name] = settingValue;
+    }
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(persistent));
+    sessionStorage.setItem(SECRET_SETTINGS_KEY, JSON.stringify(secrets));
 }
 
 // Clear all settings
 export function clearSettings() {
     localStorage.removeItem(SETTINGS_KEY);
+    sessionStorage.removeItem(SECRET_SETTINGS_KEY);
     showNotification('Settings cleared', 'info');
 }

@@ -21,6 +21,7 @@ import { initSettingsManager } from './settings-manager.js';
 import { 
     showNotification, 
     handleNetworkError,
+    escapeHTML,
     addEventListenerSafe
 } from './ui-utils.js';
 
@@ -222,7 +223,7 @@ class YTDLStudioApp {
                 configContentLoading.innerHTML = `
                     <div class="text-center text-red-500 p-4">
                         <p class="font-semibold">Error Fetching Information</p>
-                        <p class="text-sm mt-1">${error.message}</p>
+                        <p class="text-sm mt-1">${escapeHTML(error.message)}</p>
                         <button class="mt-4 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600" onclick="document.dispatchEvent(new Event('hideConfig'))">Close</button>
                     </div>`;
             }
@@ -260,7 +261,7 @@ class YTDLStudioApp {
                 configContentLoading.innerHTML = `
                     <div class="text-center text-red-500 p-4">
                         <p class="font-semibold">Error fetching video details</p>
-                        <p class="text-sm mt-1">${handleNetworkError(error)}</p>
+                        <p class="text-sm mt-1">${escapeHTML(handleNetworkError(error))}</p>
                         <button class="mt-4 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600" onclick="document.dispatchEvent(new Event('hideConfig'))">Close</button>
                     </div>`;
             }

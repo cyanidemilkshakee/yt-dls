@@ -1,4 +1,5 @@
-import { state, SETTINGS_KEY } from './config.js';
+import { state, getAdvancedSettings } from './config.js';
+import { previewCommand } from './api.js';
 import { 
     showNotification, 
     addCinematicEnter, 
@@ -8,7 +9,8 @@ import {
     setChecked,
     setValue,
     setupCheckboxToggle,
-    addEventListenerSafe
+    addEventListenerSafe,
+    escapeHTML
 } from './ui-utils.js';
 
 // Config section DOM elements
@@ -22,6 +24,8 @@ let subtitlesToggle, subtitlesOptions;
 let postprocessingToggle, postprocessingOptions;
 let metadataToggle, metadataOptions;
 let presetsGroup, allConfigInputs;
+let commandPreviewTimer = null;
+let commandPreviewSequence = 0;
 
 // Initialize config manager
 export function initConfigManager() {
@@ -354,26 +358,26 @@ function createFormatRow(format, type, bestIds, firstBestCodec) {
 
     if (type === 'video') {
         row.innerHTML = `
-            <td class="p-2 font-mono text-xs">${format.id}</td>
-            <td class="p-2">${format.ext}</td>
+            <td class="p-2 font-mono text-xs">${escapeHTML(format.id)}</td>
+            <td class="p-2">${escapeHTML(format.ext)}</td>
             <td class="p-2">
-                ${format.resolution || 'N/A'}
+                ${escapeHTML(format.resolution || 'N/A')}
                 ${tagsHtml}
             </td>
-            <td class="p-2">${bitrate}</td>
-            <td class="p-2">${fileSizeStr}</td>
-            <td class="p-2 truncate ${codecClass}" title="${codec}">${codec}</td>
+            <td class="p-2">${escapeHTML(bitrate)}</td>
+            <td class="p-2">${escapeHTML(fileSizeStr)}</td>
+            <td class="p-2 truncate ${codecClass}" title="${escapeHTML(codec)}">${escapeHTML(codec)}</td>
         `;
     } else {
         row.innerHTML = `
-            <td class="p-2 font-mono text-xs">${format.id}</td>
+            <td class="p-2 font-mono text-xs">${escapeHTML(format.id)}</td>
             <td class="p-2">
-                ${format.ext}
+                ${escapeHTML(format.ext)}
                 ${tagsHtml}
             </td>
-            <td class="p-2">${bitrate}</td>
-            <td class="p-2">${fileSizeStr}</td>
-            <td class="p-2 truncate ${codecClass}" title="${codec}">${codec}</td>
+            <td class="p-2">${escapeHTML(bitrate)}</td>
+            <td class="p-2">${escapeHTML(fileSizeStr)}</td>
+            <td class="p-2 truncate ${codecClass}" title="${escapeHTML(codec)}">${escapeHTML(codec)}</td>
         `;
     }
 
@@ -448,8 +452,8 @@ function populateSubtitlesTable(videoInfo) {
         videoInfo.subtitles.forEach(subtitle => {
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td class="p-2">${subtitle.lang}</td>
-                <td class="p-2">${subtitle.name}</td>
+                <td class="p-2">${escapeHTML(subtitle.lang)}</td>
+                <td class="p-2">${escapeHTML(subtitle.name)}</td>
                 <td class="p-2">${subtitle.auto ? 'Yes' : 'No'}</td>
             `;
             subtitlesTableBody.appendChild(row);
@@ -645,6 +649,19 @@ export function generateCommand() {
     // Final URL
     command += ` "${state.currentUrl}"`;
     finalCommandTextarea.value = command;
+
+    const sequence = ++commandPreviewSequence;
+    clearTimeout(commandPreviewTimer);
+    commandPreviewTimer = setTimeout(async () => {
+        try {
+            const result = await previewCommand(buildDownloadOptions());
+            if (sequence === commandPreviewSequence && finalCommandTextarea) {
+                finalCommandTextarea.value = result.command;
+            }
+        } catch (error) {
+            console.debug('Server command preview unavailable:', error.message);
+        }
+    }, 250);
 }
 
 // Add subtitle options to command
@@ -789,7 +806,7 @@ function parseCommandAndUpdateUI() {
 
 // Build download options object
 export function buildDownloadOptions() {
-    const advancedSettings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+    const advancedSettings = getAdvancedSettings();
 
     let formatCode = 'bestvideo+bestaudio/best';
     if (state.currentDownloadMode === 'both') {
@@ -804,6 +821,7 @@ export function buildDownloadOptions() {
 
     return {
         url: state.currentUrl,
+        downloadMode: state.currentDownloadMode,
         formatCode: formatCode,
         filename: getValue('config-filename-base'),
         outputFormat: getValue('config-output-format'),

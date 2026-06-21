@@ -446,6 +446,44 @@
                     </div>
                 </div>
             </div>
+
+            <div class="download-telemetry" aria-label="Download telemetry">
+                <section class="speed-history-panel" aria-label="Speed history for this download">
+                    <div class="telemetry-heading-row">
+                        <span class="telemetry-label">Speed history</span>
+                        <span class="speed-peak-text">Peak: --</span>
+                    </div>
+                    <canvas class="speed-history-canvas" height="52" aria-hidden="true"></canvas>
+                    <p class="speed-history-summary sr-only" aria-live="polite">Waiting for speed data.</p>
+                </section>
+
+                <section class="stream-progress-panel" aria-label="Media stream progress">
+                    <div class="stream-progress-row video-stream-row" data-stream="video">
+                        <div class="stream-heading-row">
+                            <span class="stream-label"><span class="stream-marker video-marker" aria-hidden="true"></span>Video</span>
+                            <span class="stream-status-text">Waiting</span>
+                        </div>
+                        <div class="stream-progress-track" role="progressbar" aria-label="Video stream" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="stream-progress-fill video-stream-fill"></div></div>
+                        <div class="stream-detail-row">
+                            <span class="stream-size-text">--</span>
+                            <span class="stream-speed-text">--</span>
+                            <span class="stream-progress-text">0%</span>
+                        </div>
+                    </div>
+                    <div class="stream-progress-row audio-stream-row" data-stream="audio">
+                        <div class="stream-heading-row">
+                            <span class="stream-label"><span class="stream-marker audio-marker" aria-hidden="true"></span>Audio</span>
+                            <span class="stream-status-text">Waiting</span>
+                        </div>
+                        <div class="stream-progress-track" role="progressbar" aria-label="Audio stream" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="stream-progress-fill audio-stream-fill"></div></div>
+                        <div class="stream-detail-row">
+                            <span class="stream-size-text">--</span>
+                            <span class="stream-speed-text">--</span>
+                            <span class="stream-progress-text">0%</span>
+                        </div>
+                    </div>
+                </section>
+            </div>
                 </div>
             </div>
             <div class="log-container w-full bg-black/50 dark:bg-black/80 p-2 rounded-md mt-4 hidden max-h-48 overflow-y-auto">

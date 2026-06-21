@@ -4,47 +4,40 @@ const logger = require('./logger');
 
 const isWindows = os.platform() === 'win32';
 
-function terminateProcess(processObj, timeout = 5000) {
+function waitForExit(processObj, timeout) {
   return new Promise((resolve) => {
-    if (!processObj || processObj.killed) return resolve();
-
-    let terminated = false;
-    const cleanup = () => {
-      if (!terminated) {
-        terminated = true;
-        resolve();
-      }
+    if (!processObj || processObj.exitCode !== null || processObj.signalCode !== null) return resolve(true);
+    let done = false;
+    const finish = (exited) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      processObj.removeListener('exit', onExit);
+      resolve(exited);
     };
-
-    processObj.on('exit', cleanup);
-
-    if (isWindows) {
-      const pid = processObj.pid;
-      try {
-        processObj.kill('SIGTERM');
-        setTimeout(() => {
-          if (!terminated && !processObj.killed) {
-            spawn('taskkill', ['/pid', pid.toString(), '/f', '/t'], { stdio: 'ignore' }).on('exit', cleanup);
-          }
-        }, timeout);
-      } catch (error) {
-        logger.warn(`Failed to terminate process ${pid}: ${error.message}`);
-        cleanup();
-      }
-    } else {
-      try {
-        processObj.kill('SIGTERM');
-        setTimeout(() => {
-          if (!terminated && !processObj.killed) {
-            processObj.kill('SIGKILL');
-          }
-        }, timeout);
-      } catch (error) {
-        logger.warn(`Failed to terminate process: ${error.message}`);
-        cleanup();
-      }
-    }
+    const onExit = () => finish(true);
+    processObj.once('exit', onExit);
+    const timer = setTimeout(() => finish(false), timeout);
+    timer.unref?.();
   });
 }
 
-module.exports = { isWindows, terminateProcess };
+async function terminateProcess(processObj, timeout = 5000) {
+  if (!processObj || processObj.exitCode !== null || processObj.signalCode !== null) return;
+  const pid = processObj.pid;
+  try { processObj.kill('SIGTERM'); } catch (_) {}
+  if (await waitForExit(processObj, timeout)) return;
+
+  if (isWindows && pid) {
+    await new Promise((resolve) => {
+      const killer = spawn('taskkill', ['/pid', String(pid), '/f', '/t'], { stdio: 'ignore', windowsHide: true });
+      killer.once('error', resolve);
+      killer.once('close', resolve);
+    });
+  } else {
+    try { processObj.kill('SIGKILL'); } catch (error) { logger.warn(`Failed to force-kill process ${pid || ''}: ${error.message}`); }
+  }
+  await waitForExit(processObj, Math.min(timeout, 2000));
+}
+
+module.exports = { isWindows, terminateProcess, waitForExit };

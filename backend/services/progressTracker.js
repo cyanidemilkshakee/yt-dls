@@ -27,7 +27,7 @@ const SSE_MAX_INTERVAL  = 500;   // maximum ms between broadcasts (forces send)
 
 // ─── DownloadProgress ─────────────────────────────────────────────────────────
 class DownloadProgress {
-  constructor(downloadId) {
+  constructor(downloadId, { expectedVideo = true, expectedAudio = true } = {}) {
     this.downloadId      = downloadId;
     this.status          = 'initializing';
     this.progress        = 0.0;
@@ -40,8 +40,8 @@ class DownloadProgress {
     this.startedAt       = new Date();
     this.completedAt     = null;
     this.log             = [];
-    this.videoProgress   = { status: 'waiting', progress: 0, speed: 0, eta: null, downloadedBytes: 0, totalBytes: 0 };
-    this.audioProgress   = { status: 'waiting', progress: 0, speed: 0, eta: null, downloadedBytes: 0, totalBytes: 0 };
+    this.videoProgress   = { expected: expectedVideo, combined: false, status: expectedVideo ? 'waiting' : 'not_requested', progress: 0, speed: 0, eta: null, downloadedBytes: 0, totalBytes: 0 };
+    this.audioProgress   = { expected: expectedAudio, combined: false, status: expectedAudio ? 'waiting' : 'not_requested', progress: 0, speed: 0, eta: null, downloadedBytes: 0, totalBytes: 0 };
   }
 
   toDict() {
@@ -75,6 +75,30 @@ class DownloadProgress {
   addLog(message) {
     this.log.push(message);
     if (this.log.length > 200) this.log.shift(); // ring buffer cap at 200
+  }
+}
+
+function recalculateAggregate(progress) {
+  let streams = [progress.videoProgress, progress.audioProgress].filter((stream) => stream.expected);
+  if (!streams.length) return;
+  if (streams.length > 1 && streams.every((stream) => stream.combined)) streams = [streams[0]];
+  const allTotalsKnown = streams.every((stream) => Number(stream.totalBytes) > 0);
+  const totalBytes = streams.reduce((sum, stream) => sum + (Number(stream.totalBytes) || 0), 0);
+  const downloadedBytes = streams.reduce((sum, stream) => sum + (Number(stream.downloadedBytes) || 0), 0);
+  progress.totalBytes = totalBytes;
+  progress.downloadedBytes = downloadedBytes;
+  progress.progress = allTotalsKnown && totalBytes > 0
+    ? Math.min(100, (downloadedBytes / totalBytes) * 100)
+    : streams.reduce((sum, stream) => sum + (Number(stream.progress) || 0), 0) / streams.length;
+}
+
+function markIncompleteStreams(progress, status) {
+  for (const stream of [progress.videoProgress, progress.audioProgress]) {
+    if (stream.expected && stream.status !== 'completed') {
+      stream.status = status;
+      stream.speed = 0;
+      stream.eta = null;
+    }
   }
 }
 
@@ -168,6 +192,8 @@ module.exports = {
   downloadProgress,
   sseClients,
   DownloadProgress,
+  recalculateAggregate,
+  markIncompleteStreams,
   broadcastUpdate,
   broadcastImmediate,
   cleanupOldDownloads,

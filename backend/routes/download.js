@@ -16,26 +16,26 @@
 const express  = require('express');
 const readline = require('readline');
 const { spawn } = require('child_process');
-const path     = require('path');
-const fs       = require('fs').promises;
+const fs       = require('fs');
 const { v4: uuidv4 } = require('uuid');
 
 const logger = require('../utils/logger');
+const { config } = require('../config');
 const { isWindows, terminateProcess } = require('../utils/platform');
+const { validateMediaUrl, resolveDownloadDirectory } = require('../utils/validation');
+const { buildYtDlpCommand, redactCommand, formatCommand } = require('../services/commandBuilder');
 const {
   activeDownloads,
   downloadProgress,
   sseClients,
   DownloadProgress,
+  recalculateAggregate,
+  markIncompleteStreams,
   broadcastUpdate,
   broadcastImmediate,
 } = require('../services/progressTracker');
 
 const router = express.Router();
-
-const DOWNLOAD_DIR            = path.join(__dirname, '..', '..', 'downloads');
-const YTDLP_CHECK_TIMEOUT_MS  = Number(process.env.YTDLP_CHECK_TIMEOUT_MS || 5000);
-const MAX_DOWNLOAD_DURATION_MS = Number(process.env.MAX_DOWNLOAD_DURATION_MS || 30 * 60 * 1000);
 
 // ─── yt-dlp availability cache ────────────────────────────────────────────────
 let _ytdlpAvailableAt  = 0;          // timestamp of last successful check
@@ -45,11 +45,11 @@ async function checkYtDlpAvailable() {
   if (Date.now() - _ytdlpAvailableAt < YTDLP_CACHE_TTL) return; // cache hit
 
   await new Promise((resolve, reject) => {
-    const proc = spawn('yt-dlp', ['--version'], { stdio: 'pipe' });
+    const proc = spawn(config.YTDLP_PATH, ['--version'], { stdio: 'pipe', windowsHide: true });
     const t    = setTimeout(() => {
       try { proc.kill(); } catch (_) {}
       reject(new Error('yt-dlp availability check timeout'));
-    }, YTDLP_CHECK_TIMEOUT_MS);
+    }, config.YTDLP_CHECK_TIMEOUT_MS);
 
     proc.on('close', (code) => {
       clearTimeout(t);
@@ -65,18 +65,27 @@ async function checkYtDlpAvailable() {
 
 // ─── SSE events ──────────────────────────────────────────────────────────────
 router.get('/downloads/events', (req, res) => {
-  res.writeHead(200, {
-    'Content-Type':                'text/event-stream',
-    'Cache-Control':               'no-cache',
-    'Connection':                  'keep-alive',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers':'Cache-Control',
+  res.status(200);
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
   });
+  res.flushHeaders();
   res.write('data: {"type":"connected","message":"SSE connected"}\n\n');
   sseClients.add(res);
-  const drop = () => sseClients.delete(res);
+  const heartbeat = setInterval(() => {
+    if (!res.writableEnded && !res.destroyed) res.write(': keep-alive\n\n');
+  }, 15_000);
+  heartbeat.unref?.();
+  const drop = () => {
+    clearInterval(heartbeat);
+    sseClients.delete(res);
+  };
   req.on('close',   drop);
   req.on('aborted', drop);
+  res.on('close',   drop);
+  res.on('error',   drop);
 });
 
 // ─── Progress hook ────────────────────────────────────────────────────────────
@@ -91,8 +100,34 @@ function progressHook(data, downloadId) {
 
   const status   = d.status || 'unknown';
   const filename = d.filename || progress.filename || 'download';
-  const isVideo  = /\.(mp4|mkv|webm|avi)$/i.test(filename) && !/audio/i.test(filename);
-  const isAudio  = /\.(mp3|m4a|wav|aac)$/i.test(filename)  || /audio/i.test(filename);
+  const hasCodec = (codec) => codec && !['none', 'n/a', 'na', 'null'].includes(String(codec).toLowerCase());
+  const hasVideo = hasCodec(d.vcodec);
+  const hasAudio = hasCodec(d.acodec);
+  const videoByName = /\.(mp4|mkv|webm|avi|mov|flv|m4v|ts)$/i.test(filename) && !/audio/i.test(filename);
+  const audioByName = /\.(mp3|m4a|wav|aac|flac|ogg|opus|alac|vorbis)$/i.test(filename) || /audio/i.test(filename);
+  let streams;
+  if (hasVideo && hasAudio && progress.videoProgress.expected && progress.audioProgress.expected) {
+    streams = [progress.videoProgress, progress.audioProgress];
+  } else if ((hasAudio && !hasVideo) || audioByName) {
+    streams = [progress.audioProgress];
+  } else if ((hasVideo && !hasAudio) || videoByName) {
+    streams = [progress.videoProgress];
+  } else if (progress.videoProgress.expected && !progress.audioProgress.expected) {
+    streams = [progress.videoProgress];
+  } else if (progress.audioProgress.expected && !progress.videoProgress.expected) {
+    streams = [progress.audioProgress];
+  } else if (progress.videoProgress.status === 'downloading') {
+    streams = [progress.videoProgress];
+  } else if (progress.audioProgress.status === 'downloading') {
+    streams = [progress.audioProgress];
+  } else {
+    streams = [progress.videoProgress];
+  }
+  const combined = streams.length > 1;
+  if (!combined) {
+    progress.videoProgress.combined = false;
+    progress.audioProgress.combined = false;
+  }
 
   const safeNum = (v, def = 0) => {
     if (v === undefined || v === null || v === 'N/A' || v === '') return def;
@@ -119,28 +154,26 @@ function progressHook(data, downloadId) {
 
     const pct = totalBytes > 0 ? Math.min((downloadedBytes / totalBytes) * 100, 100) : 0;
 
-    if (isVideo) {
-      Object.assign(progress.videoProgress, { status: 'downloading', totalBytes, downloadedBytes, progress: pct, speed, eta });
-    } else if (isAudio) {
-      Object.assign(progress.audioProgress, { status: 'downloading', totalBytes, downloadedBytes, progress: pct, speed, eta });
+    for (const stream of streams) {
+      Object.assign(stream, { combined, status: 'downloading', totalBytes, downloadedBytes, progress: pct, speed, eta });
     }
-
-    progress.totalBytes      = totalBytes;
-    progress.downloadedBytes = downloadedBytes;
-    progress.progress        = pct;
+    recalculateAggregate(progress);
     progress.speed           = speed;
     progress.eta             = eta;
 
     broadcastUpdate(downloadId, progress.toDict()); // throttled
 
   } else if (status === 'finished') {
-    if (isVideo) { progress.videoProgress.status = 'completed'; progress.videoProgress.progress = 100; }
-    else if (isAudio) { progress.audioProgress.status = 'completed'; progress.audioProgress.progress = 100; }
-
-    const videoDone = ['completed', 'waiting'].includes(progress.videoProgress.status);
-    const audioDone = ['completed', 'waiting'].includes(progress.audioProgress.status);
-    progress.status = videoDone && audioDone ? 'completed' : 'processing';
-    if (progress.status === 'completed') progress.progress = 100;
+    for (const stream of streams) {
+      stream.combined = combined;
+      stream.status = 'completed';
+      stream.progress = 100;
+      stream.speed = 0;
+      stream.eta = null;
+      if (stream.totalBytes > 0) stream.downloadedBytes = stream.totalBytes;
+    }
+    recalculateAggregate(progress);
+    progress.status = 'processing';
     if (d.filename) progress.filename = filename;
     progress.speed = 0;
     progress.eta   = null;
@@ -149,11 +182,12 @@ function progressHook(data, downloadId) {
 
   } else if (status === 'error') {
     progress.status = 'failed';
+    progress.completedAt = new Date();
     progress.error  = String(d.error || 'Unknown error');
     progress.speed  = 0;
     progress.eta    = null;
-    if (isVideo) progress.videoProgress.status = 'failed';
-    else if (isAudio) progress.audioProgress.status = 'failed';
+    for (const stream of streams) stream.status = 'failed';
+    markIncompleteStreams(progress, 'failed');
     progress.addLog(`Download failed: ${progress.error}`);
     logger.error(`Download ${downloadId} failed: ${progress.error}`);
 
@@ -161,7 +195,29 @@ function progressHook(data, downloadId) {
   }
 }
 
+function expectedStreams(options) {
+  if (options.extractAudio || options.downloadMode === 'audio') return { expectedVideo: false, expectedAudio: true };
+  if (options.downloadMode === 'video') return { expectedVideo: true, expectedAudio: false };
+  if (options.downloadMode === 'both') return { expectedVideo: true, expectedAudio: true };
+  const format = String(options.formatCode || '').toLowerCase();
+  if (format.includes('audio') && !format.includes('video') && !format.includes('+')) return { expectedVideo: false, expectedAudio: true };
+  if (format.includes('video') && !format.includes('audio') && !format.includes('+')) return { expectedVideo: true, expectedAudio: false };
+  return { expectedVideo: true, expectedAudio: true };
+}
+
 // ─── POST /api/download ───────────────────────────────────────────────────────
+router.post('/command-preview', (req, res) => {
+  try {
+    const options = { ...(req.body || {}) };
+    if (!options.url) options.url = 'https://example.com/video';
+    const downloadDirectory = resolveDownloadDirectory(options.downloadPath);
+    const { command } = buildYtDlpCommand(options, { downloadDirectory });
+    res.json({ command: formatCommand(redactCommand(command)) });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message, code: error.code || 'INVALID_OPTIONS' });
+  }
+});
+
 router.post('/download', async (req, res) => {
   const downloadId = uuidv4();
   let progress = null;
@@ -173,13 +229,18 @@ router.post('/download', async (req, res) => {
     if (!options.url || typeof options.url !== 'string')
       return res.status(400).json({ error: 'URL is required and must be a string.', code: 'MISSING_URL' });
 
-    const url = options.url.trim();
-    if (!url)
-      return res.status(400).json({ error: 'URL cannot be empty.', code: 'EMPTY_URL' });
-    if (!/^https?:\/\//.test(url))
-      return res.status(400).json({ error: 'Invalid URL format. Must start with http:// or https://', code: 'INVALID_URL_FORMAT' });
-    try { new URL(url); } catch (e) {
-      return res.status(400).json({ error: `Invalid URL: ${e.message}`, code: 'MALFORMED_URL' });
+    let url;
+    try { url = await validateMediaUrl(options.url); }
+    catch (error) {
+      return res.status(error.status || 400).json({ error: error.message, code: error.code || 'INVALID_URL' });
+    }
+    options.url = url;
+
+    if (activeDownloads.size >= config.MAX_CONCURRENT_DOWNLOADS) {
+      return res.status(429).json({
+        error: `The download queue is full (${config.MAX_CONCURRENT_DOWNLOADS} active).`,
+        code: 'DOWNLOAD_LIMIT_REACHED',
+      });
     }
 
     // yt-dlp availability (cached — no spawn overhead if checked recently)
@@ -190,8 +251,15 @@ router.post('/download', async (req, res) => {
       return res.status(503).json({ error: `yt-dlp is not available: ${e.message}`, code: 'YTDLP_UNAVAILABLE' });
     }
 
-    // Download directory
-    try { await fs.access(DOWNLOAD_DIR, fs.constants.F_OK | fs.constants.W_OK); }
+    let downloadDirectory;
+    try { downloadDirectory = resolveDownloadDirectory(options.downloadPath); }
+    catch (error) {
+      return res.status(error.status || 400).json({ error: error.message, code: error.code || 'INVALID_DOWNLOAD_PATH' });
+    }
+    try {
+      await fs.promises.mkdir(downloadDirectory, { recursive: true });
+      await fs.promises.access(downloadDirectory, fs.constants.F_OK | fs.constants.W_OK);
+    }
     catch (dirError) {
       logger.error(`Download dir access failed: ${dirError.message}`);
       return res.status(503).json({ error: `Download directory is not accessible: ${dirError.message}`, code: 'DIRECTORY_INACCESSIBLE' });
@@ -199,7 +267,7 @@ router.post('/download', async (req, res) => {
 
     // Progress tracker
     try {
-      progress = new DownloadProgress(downloadId);
+      progress = new DownloadProgress(downloadId, expectedStreams(options));
       downloadProgress.set(downloadId, progress);
     } catch (e) {
       logger.error(`Progress tracker init failed: ${e.message}`);
@@ -209,15 +277,14 @@ router.post('/download', async (req, res) => {
     // Build command
     let command;
     try {
-      const { buildYtDlpCommand } = require('../services/commandBuilder');
-      command = buildYtDlpCommand(options).command;
+      command = buildYtDlpCommand(options, { downloadDirectory }).command;
     } catch (e) {
       logger.error(`Failed to build yt-dlp command: ${e.message}`);
       downloadProgress.delete(downloadId);
       return res.status(400).json({ error: `Invalid download options: ${e.message}`, code: 'INVALID_OPTIONS' });
     }
 
-    logger.info(`Starting download ${downloadId}: ${command.join(' ')}`);
+    logger.info(`Starting download ${downloadId} from ${new URL(url).hostname}`);
 
     // ── Kick off download on next tick so HTTP response is flushed first ────
     process.nextTick(() => {
@@ -225,15 +292,15 @@ router.post('/download', async (req, res) => {
         progress.status = 'starting';
 
         const ytdlpProcess = spawn(command[0], command.slice(1), {
-          cwd:   DOWNLOAD_DIR,
+          cwd:   downloadDirectory,
           stdio: ['ignore', 'pipe', 'pipe'],
           env:   { ...process.env, PYTHONUNBUFFERED: '1' },
+          windowsHide: true,
         });
 
         activeDownloads.set(downloadId, {
           process:    ytdlpProcess,
           status:     'running',
-          command:    command.join(' '),
           url,
           started_at: new Date().toISOString(),
           pid:        ytdlpProcess.pid,
@@ -329,20 +396,26 @@ router.post('/download', async (req, res) => {
         });
 
         // ── Process close ───────────────────────────────────────────────────
-        ytdlpProcess.on('close', (code, signal) => {
+        ytdlpProcess.once('close', (code, signal) => {
           rlOut.close();
           rlErr.close();
           logger.info(`Download ${downloadId} closed — code=${code} signal=${signal}`);
           if (activeDownloads.has(downloadId)) activeDownloads.delete(downloadId);
 
           if (progress.status === 'cancelled') {
+            markIncompleteStreams(progress, 'cancelled');
             progress.speed = 0; progress.eta = null;
+            progress.completedAt = progress.completedAt || new Date();
             progress.addLog('Download was cancelled by user');
           } else if (progress.status === 'failed') {
+            markIncompleteStreams(progress, 'failed');
             progress.speed = 0; progress.eta = null;
+            progress.completedAt = progress.completedAt || new Date();
             progress.addLog(`Download failed: ${progress.error || 'Unknown error'}`);
           } else if (signal) {
             progress.status = 'failed';
+            markIncompleteStreams(progress, 'failed');
+            progress.completedAt = new Date();
             progress.error  = `Process terminated by signal: ${signal}`;
             progress.speed  = 0; progress.eta = null;
             progress.addLog(`Process terminated by signal: ${signal}`);
@@ -352,12 +425,21 @@ router.post('/download', async (req, res) => {
             progress.completedAt = new Date();
             progress.progress    = 100;
             progress.speed       = 0; progress.eta = null;
-            if (progress.videoProgress) progress.videoProgress.progress = 100;
-            if (progress.audioProgress) progress.audioProgress.progress = 100;
+            for (const streamProgress of [progress.videoProgress, progress.audioProgress]) {
+              if (streamProgress.expected) {
+                streamProgress.status = 'completed';
+                streamProgress.progress = 100;
+                streamProgress.speed = 0;
+                streamProgress.eta = null;
+                if (streamProgress.totalBytes > 0) streamProgress.downloadedBytes = streamProgress.totalBytes;
+              }
+            }
             progress.addLog('Download completed successfully');
             logger.info(`Download ${downloadId} completed successfully`);
           } else {
             progress.status = 'failed';
+            markIncompleteStreams(progress, 'failed');
+            progress.completedAt = new Date();
             progress.error  = `Download failed with exit code ${code}`;
             progress.speed  = 0; progress.eta = null;
             progress.addLog(`Download failed with exit code ${code}`);
@@ -374,29 +456,45 @@ router.post('/download', async (req, res) => {
           if (activeDownloads.has(downloadId)) {
             logger.warn(`Download ${downloadId} hit hard timeout — terminating`);
             try {
-              terminateProcess(ytdlpProcess);
               progress.status = 'failed';
+              markIncompleteStreams(progress, 'failed');
               progress.error  = 'Download timeout';
+              progress.completedAt = new Date();
+              broadcastImmediate(downloadId, progress.toDict());
+              terminateProcess(ytdlpProcess).catch((error) => logger.error(`Failed to terminate timed-out process ${downloadId}: ${error.message}`));
               progress.addLog('Download timeout — process terminated');
             } catch (e) {
               logger.error(`Failed to terminate timed-out process ${downloadId}: ${e.message}`);
             }
           }
-        }, MAX_DOWNLOAD_DURATION_MS);
+        }, config.MAX_DOWNLOAD_DURATION_MS);
+        timeoutHandle.unref?.();
 
-        ytdlpProcess.on('close', () => clearTimeout(timeoutHandle));
-        ytdlpProcess.on('error', () => clearTimeout(timeoutHandle));
+        ytdlpProcess.once('close', () => clearTimeout(timeoutHandle));
+        ytdlpProcess.once('error', (error) => {
+          clearTimeout(timeoutHandle);
+          activeDownloads.delete(downloadId);
+          progress.status = 'failed';
+          markIncompleteStreams(progress, 'failed');
+          progress.error = `Failed to start yt-dlp: ${error.message}`;
+          progress.completedAt = new Date();
+          progress.addLog(progress.error);
+          broadcastImmediate(downloadId, progress.toDict());
+        });
 
       } catch (spawnError) {
         logger.error(`Failed to spawn download process for ${downloadId}: ${spawnError.message}`);
         progress.status = 'failed';
+        markIncompleteStreams(progress, 'failed');
         progress.error  = `Failed to start download process: ${spawnError.message}`;
+        progress.completedAt = new Date();
         progress.addLog(`SPAWN_ERROR: ${spawnError.message}`);
         if (activeDownloads.has(downloadId)) activeDownloads.delete(downloadId);
+        broadcastImmediate(downloadId, progress.toDict());
       }
     });
 
-    res.json({ status: 'success', message: 'Download started successfully', download_id: downloadId });
+    res.status(202).json({ status: 'success', message: 'Download queued successfully', download_id: downloadId });
 
   } catch (error) {
     logger.error(`Failed to start download: ${error.message}`);
@@ -419,7 +517,7 @@ router.get('/download/:downloadId/status', (req, res) => {
 // Query: ?ids=id1,id2,id3
 router.get('/downloads/status/batch', (req, res) => {
   const rawIds = req.query.ids || '';
-  const ids    = rawIds.split(',').map(s => s.trim()).filter(Boolean);
+  const ids    = rawIds.split(',').map(s => s.trim()).filter(Boolean).slice(0, 100);
 
   const result = {};
   for (const id of ids) {
@@ -443,6 +541,8 @@ router.post('/download/:downloadId/cancel', async (req, res) => {
       downloadInfo.status = 'cancelled';
       if (progress) {
         progress.status = 'cancelled';
+        markIncompleteStreams(progress, 'cancelled');
+        progress.completedAt = new Date();
         progress.addLog('Download cancelled by user');
         progress.speed = 0; progress.eta = null;
         try { broadcastImmediate(downloadId, progress.toDict()); } catch (_) {}
@@ -505,7 +605,7 @@ router.post('/download/:downloadId/resume', (req, res) => {
       downloadInfo.process.kill('SIGCONT');
       downloadInfo.status = 'running';
       if (progress) {
-        progress.status = 'running';
+        progress.status = 'downloading';
         try { broadcastImmediate(downloadId, progress.toDict()); } catch (_) {}
       }
       logger.info(`Download ${downloadId} resumed`);
@@ -528,13 +628,13 @@ router.get('/download/:downloadId/log', (req, res) => {
 });
 
 // ─── DELETE /api/download/:downloadId ─────────────────────────────────────────
-router.delete('/download/:downloadId', (req, res) => {
+router.delete('/download/:downloadId', async (req, res) => {
   const { downloadId } = req.params;
   if (activeDownloads.has(downloadId)) {
     const info = activeDownloads.get(downloadId);
-    if (info.status === 'running') {
-      try { info.process.kill('SIGTERM'); }
-      catch (e) { logger.warn(`Failed to kill process for ${downloadId}: ${e.message}`); }
+    if (['running', 'starting', 'paused'].includes(info.status)) {
+      try { await terminateProcess(info.process); }
+      catch (e) { logger.warn(`Failed to stop process for ${downloadId}: ${e.message}`); }
     }
     activeDownloads.delete(downloadId);
   }

@@ -5,7 +5,7 @@ A modern GUI for yt-dlp with an Express (Node.js) backend and a static HTML/CSS/
 ## Quick start
 
 Prerequisites
-- Node.js 16 or newer
+- Node.js 22 or newer
 - yt-dlp installed and in your PATH
 - FFmpeg installed and in your PATH (for muxing/post-processing)
 
@@ -39,11 +39,20 @@ ffmpeg -version
 - Writes rotating logs to logs/ytdl-YYYY-MM-DD.log
 
 ## Run-time configuration
-Set environment variables before starting if you need to customize defaults:
+Copy `.env.example` to `.env`, or set environment variables before starting:
 - PORT: HTTP port (default 5000)
-- FRONTEND_ORIGIN: CSV list of allowed origins for CORS when not serving the frontend from the backend (default allows localhost and file://)
-- YTDLP_CHECK_TIMEOUT_MS: Timeout for yt-dlp availability checks (default 5000)
+- HOST: bind address (default 127.0.0.1; loopback-only)
+- FRONTEND_ORIGIN: CSV list of extra allowed origins when using a separate frontend
+- DOWNLOAD_DIR: server-controlled download root (default `./downloads`)
+- YTDLP_PATH: custom yt-dlp executable path
+- LOG_LEVEL: Winston log level (default `info`)
+- YTDLP_CHECK_TIMEOUT_MS: Timeout for yt-dlp availability checks (default 15000)
 - MAX_DOWNLOAD_DURATION_MS: Per-download timeout guard (default 1800000 = 30 minutes)
+- MAX_CONCURRENT_DOWNLOADS: process concurrency guard (default 3)
+
+Security-sensitive options are disabled by default. `ALLOW_CUSTOM_DOWNLOAD_PATH`,
+`ALLOW_DANGEROUS_OPTIONS` (`--exec`, `--netrc-cmd`, and `--enable-file-urls`),
+and `ALLOW_PRIVATE_URLS` must be explicitly enabled on a trusted local machine.
 
 Examples (Windows cmd)
 ```cmd
@@ -53,7 +62,9 @@ set PORT=5001 && npm start
 ## Scripts
 - npm start: run backend/server.js
 - npm run dev: run with nodemon (auto-restart)
-- npm run build: build Tailwind CSS to frontend/styles.css (optional; a stylesheet is already present)
+- npm run build: run the production validation suite
+- npm run css:watch: regenerate frontend/styles.css while developing styles
+- npm test: run backend command and HTTP integration tests
 
 ## Project structure
 ```
@@ -86,6 +97,7 @@ package.json             # Node scripts and deps
 - GET /api/info?url=<url>: metadata for a URL or playlist (normalized)
 - GET /api/downloads: list current downloads
 - GET /api/downloads/events: SSE stream of progress updates
+- POST /api/command-preview: validate options and return the exact redacted yt-dlp command
 - POST /api/download: start a download; body: { url, formatCode, filename, downloadPath, ... }
 - GET /api/download/:downloadId/status: progress snapshot
 - POST /api/download/:downloadId/cancel: cancel
