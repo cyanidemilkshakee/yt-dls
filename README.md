@@ -1,6 +1,6 @@
 # YT-DL Studio
 
- local-first web GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp), built with an Express backend and a dependency-light HTML/CSS/JavaScript frontend.
+A local-first web GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp), built with an Express backend and a dependency-light HTML/CSS/JavaScript frontend.
 
 ## Features
 
