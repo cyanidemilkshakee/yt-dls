@@ -28,7 +28,7 @@ const config = Object.freeze({
   DOWNLOAD_DIR: path.resolve(ROOT_DIR, configuredDownloadDir),
   LOGS_DIR: path.resolve(ROOT_DIR, process.env.LOG_DIR || 'logs'),
   YTDLP_PATH: process.env.YTDLP_PATH || 'yt-dlp',
-  PORT: numberEnv('PORT', 5000, { min: 1, max: 65535 }),
+  PORT: numberEnv('PORT', 7391, { min: 1, max: 65535 }),
   HOST: process.env.HOST || '127.0.0.1',
   LOG_LEVEL: process.env.LOG_LEVEL || 'info',
   AUTO_OPEN_BROWSER: booleanEnv('AUTO_OPEN_BROWSER', true),

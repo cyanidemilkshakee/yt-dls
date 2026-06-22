@@ -1,5 +1,5 @@
 // --- Configuration ---
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = 'http://localhost:7391/api';
 
 // Platform capabilities
 let platformInfo = {
@@ -1221,7 +1221,7 @@ function addDownload(options) {
 }
 
 function handleNetworkError(error) {
-    if (error.message.includes('Failed to fetch')) return 'Cannot connect to backend server. Is it running on http://localhost:5000?';
+    if (error.message.includes('Failed to fetch')) return 'Cannot connect to backend server. Is it running on http://localhost:7391?';
     return error.message;
 }
 
@@ -1603,7 +1603,7 @@ function handleApiError(error, context = 'API request') {
     console.error(`${context} failed:`, error);
     
     if (error.message.includes('Failed to fetch')) {
-        return 'Cannot connect to backend server. Please ensure the backend is running on http://localhost:5000';
+        return 'Cannot connect to backend server. Please ensure the backend is running on http://localhost:7391';
     }
     
     if (error.status) {

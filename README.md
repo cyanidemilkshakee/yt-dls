@@ -41,7 +41,7 @@ npm install
 npm start
 ```
 
-The application listens on [http://127.0.0.1:5000](http://127.0.0.1:5000) by default and opens the browser automatically.
+The application listens on [http://127.0.0.1:7391](http://127.0.0.1:7391) by default and opens the browser automatically.
 
 For development with automatic backend restarts:
 
@@ -56,7 +56,7 @@ Copy `.env.example` to `.env` to override the defaults. Node loads this file dir
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `HOST` | `127.0.0.1` | Server bind address |
-| `PORT` | `5000` | HTTP port |
+| `PORT` | `7391` | HTTP port |
 | `AUTO_OPEN_BROWSER` | `true` | Open the frontend after startup |
 | `FRONTEND_ORIGIN` | local development origins | Comma-separated extra browser origins |
 | `DOWNLOAD_DIR` | `./downloads` | Server-controlled output directory |
@@ -161,7 +161,7 @@ logs/                          Rotating application logs
 
 - **yt-dlp is not available:** confirm `yt-dlp --version` works in the same terminal, or configure `YTDLP_PATH`.
 - **FFmpeg is missing or merging fails:** install FFmpeg and ensure `ffmpeg -version` works.
-- **The page does not open:** browse to `http://127.0.0.1:5000` and inspect `logs/`.
+- **The page does not open:** browse to `http://127.0.0.1:7391` and inspect `logs/`.
 - **CORS request rejected:** use the built-in frontend or add the exact separate frontend origin to `FRONTEND_ORIGIN`.
 - **A URL is rejected as private:** this is SSRF protection; only opt in with `ALLOW_PRIVATE_URLS=true` on a trusted loopback deployment.
 - **Pause or resume fails on Windows:** use Cancel; process suspension is intentionally unsupported there.

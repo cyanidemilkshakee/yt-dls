@@ -77,7 +77,7 @@ export function showBackendOfflineModal() {
             <h2 style="font-size:1.4rem;font-weight:700;margin-bottom:10px;color:#f87171;">Backend Not Running</h2>
             <p style="color:#94a3b8;font-size:0.92rem;line-height:1.6;margin-bottom:24px;">
                 Cannot connect to the YT-DL Studio backend at
-                <code style="background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;color:#e2e8f0;">localhost:5000</code>.
+                <code style="background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;color:#e2e8f0;">localhost:7391</code>.
                 Please start the server and try again.
             </p>
             <div style="background:rgba(0,0,0,0.3);border-radius:10px;padding:14px 18px;margin-bottom:24px;text-align:left;">

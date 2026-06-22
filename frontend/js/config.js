@@ -2,7 +2,7 @@
 const runtimeLocation = globalThis.location;
 export const API_BASE_URL = runtimeLocation && runtimeLocation.protocol !== 'file:'
     ? `${runtimeLocation.origin}/api`
-    : 'http://localhost:5000/api';
+    : 'http://localhost:7391/api';
 
 // Platform capabilities
 export let platformInfo = {
