@@ -6,6 +6,7 @@ A local-first web GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp), built with
 
 - Inspect videos and playlists before downloading.
 - Select video, audio, subtitle, metadata, and post-processing options.
+- Preview the exact server-generated yt-dlp command with secrets redacted.
 - Track downloads through Server-Sent Events, with automatic batch-polling fallback.
 - View per-download speed history and independent video/audio stream progress.
 - Clearly identify combined media streams without double-counting bytes.
