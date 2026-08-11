@@ -1,6 +1,6 @@
-# YT-DL Studio
+# YT-DL Studio (Go Edition)
 
-A local-first web GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp), built with an Express backend and a dependency-light HTML/CSS/JavaScript frontend.
+A local-first web GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp), built with a Go backend and a dependency-light HTML/CSS/JavaScript frontend served directly from the Go binary.
 
 ## Features
 
@@ -12,10 +12,11 @@ A local-first web GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp), built with
 - Clearly identify combined media streams without double-counting bytes.
 - Cancel downloads, view logs, and pause or resume processes on supported Unix systems.
 - Use secure defaults: loopback binding, origin checks, request limits, private-address blocking, and server-controlled output paths.
+- **Single binary distribution**: The entire frontend is bundled inside the compiled Go binary using `go:embed`.
 
 ## Requirements
 
-- Node.js 22 or newer
+- Go 1.21 or newer (for building)
 - yt-dlp 2026.06.09 or newer
 - FFmpeg in `PATH` for merging and post-processing
 
@@ -36,22 +37,26 @@ On Windows, `py -m pip install -r requirements.txt` can be used instead. A stand
 
 ## Quick start
 
+To run the application directly:
+
 ```sh
-npm install
-npm start
+cd go
+go run cmd/server/main.go
+```
+
+To build a standalone executable:
+
+```sh
+npm run build
+# The yt-dls executable will be produced in the root directory.
+./yt-dls
 ```
 
 The application listens on [http://127.0.0.1:7391](http://127.0.0.1:7391) by default and opens the browser automatically.
 
-For development with automatic backend restarts:
-
-```sh
-npm run dev
-```
-
 ## Configuration
 
-Copy `.env.example` to `.env` to override the defaults. Node loads this file directly; no dotenv package is required.
+Copy `.env.example` to `.env` to override the defaults. The Go app parses `.env` at startup.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -62,7 +67,7 @@ Copy `.env.example` to `.env` to override the defaults. Node loads this file dir
 | `DOWNLOAD_DIR` | `./downloads` | Server-controlled output directory |
 | `LOG_DIR` | `./logs` | Rotating log directory |
 | `YTDLP_PATH` | `yt-dlp` | yt-dlp executable name or absolute path |
-| `LOG_LEVEL` | `info` | Winston log level |
+| `LOG_LEVEL` | `info` | application log level |
 | `MAX_CONCURRENT_DOWNLOADS` | `3` | Maximum active yt-dlp processes |
 | `MAX_DOWNLOAD_DURATION_MS` | `1800000` | Hard timeout per download |
 | `YTDLP_CHECK_TIMEOUT_MS` | `15000` | yt-dlp availability-check timeout |
@@ -88,21 +93,19 @@ Only enable these options on a trusted local machine. The server refuses to comb
 
 | Command | Description |
 | --- | --- |
-| `npm start` | Start the production server |
-| `npm run dev` | Start with nodemon |
-| `npm test` | Run command-builder, progress-model, and HTTP integration tests |
-| `npm run check` | Run tests and the backend syntax check |
-| `npm run build` | Run the complete validation suite |
-| `npm run css:watch` | Rebuild `frontend/styles.css` while editing styles |
+| `npm start` | Run the Go server |
+| `npm run build` | Build the Go server into a single executable |
+| `npm run css:watch` | Rebuild `go/frontend/styles.css` while editing styles using Tailwind |
+| `npm test` | Run the Go unit tests |
 
 ## How downloads work
 
 1. The frontend submits structured options rather than a shell command.
 2. The backend validates the URL, output path, format selector, and every supported option.
-3. yt-dlp is spawned directly with an argument array; no shell is involved.
+3. yt-dlp is spawned directly via Go's `os/exec`; no shell is involved.
 4. Machine-readable progress events are classified as video, audio, or combined media.
-5. Progress is delivered over SSE and displayed with aggregate and per-stream metrics.
-6. Terminal state, logs, and cleanup remain available for one hour.
+5. Progress is delivered over SSE (Server-Sent Events) and displayed with aggregate and per-stream metrics.
+6. Terminal state, logs, and cleanup remain available in memory until evicted by the background janitor loop.
 
 Downloads are written to `DOWNLOAD_DIR`. Custom paths entered by a client are rejected unless `ALLOW_CUSTOM_DOWNLOAD_PATH=true`.
 
@@ -113,11 +116,11 @@ All endpoints are mounted under `/api`.
 | Method | Endpoint | Description |
 | --- | --- | --- |
 | `GET` | `/health` | Runtime, platform, yt-dlp, and output-directory health |
-| `GET` | `/info?url=...` | Extract normalized video or playlist metadata |
+| `POST` | `/info` | Extract normalized video or playlist metadata |
 | `GET` | `/downloads` | List tracked downloads |
 | `GET` | `/downloads/events` | SSE progress stream |
 | `GET` | `/downloads/status/batch?ids=...` | Poll several download states at once |
-| `POST` | `/command-preview` | Validate options and return a redacted command preview |
+| `POST` | `/download/command-preview` | Validate options and return a redacted command preview |
 | `POST` | `/download` | Start a download |
 | `GET` | `/download/:id/status` | Get aggregate, video, and audio progress |
 | `POST` | `/download/:id/cancel` | Cancel an active download |
@@ -125,43 +128,32 @@ All endpoints are mounted under `/api`.
 | `POST` | `/download/:id/resume` | Resume on supported Unix systems |
 | `GET` | `/download/:id/log` | Get the in-memory download log |
 | `DELETE` | `/download/:id` | Remove a finished download record |
-| `GET` | `/list-impersonate-targets` | List yt-dlp impersonation targets |
-| `GET` | `/list-ap-msos` | List Adobe Pass providers |
 
 Pause and resume return HTTP 501 on Windows; cancellation remains supported.
 
 ## Project structure
 
 ```text
-backend/
-  config.js                    Environment parsing and runtime paths
-  server.js                    Express app, security headers, and shutdown
-  middleware/rateLimit.js      In-memory API rate limiter
-  routes/                      Health, metadata, downloads, and status APIs
-  services/commandBuilder.js   Validated yt-dlp argument construction
-  services/progressTracker.js  Aggregate and per-stream progress state
-  utils/processRunner.js       Bounded child-process execution
-  utils/validation.js          URL, path, filename, and option validation
-frontend/
-  index.html                   Main application
-  settings.html                Settings view
-  styles.css                   Generated Tailwind and application styles
-  js/api.js                    HTTP client and error handling
-  js/download-manager.js       SSE, polling, download cards, and controls
-  js/speed-chart.js            Canvas speed-history chart
-test/
-  commandBuilder.test.js
-  progressTracker.test.js
-  server.test.js
-downloads/                     Default output directory
-logs/                          Rotating application logs
+go/
+  cmd/server/main.go           Application entrypoint
+  internal/api/                Chi router, handlers, middleware
+  internal/config/             Environment parsing and config
+  internal/store/              In-memory progress state
+  internal/worker/             Worker pool, yt-dlp command execution
+  internal/queue/              Job queuing
+  internal/sse/                Server-Sent Events gateway
+  internal/validation/         URL, path, option validations
+  frontend/                    Embedded HTML/CSS/JS frontend
+    index.html
+    styles.css
+    js/                        Client-side logic
 ```
 
 ## Troubleshooting
 
 - **yt-dlp is not available:** confirm `yt-dlp --version` works in the same terminal, or configure `YTDLP_PATH`.
 - **FFmpeg is missing or merging fails:** install FFmpeg and ensure `ffmpeg -version` works.
-- **The page does not open:** browse to `http://127.0.0.1:7391` and inspect `logs/`.
+- **The page does not open:** browse to `http://127.0.0.1:7391` and inspect the console logs.
 - **CORS request rejected:** use the built-in frontend or add the exact separate frontend origin to `FRONTEND_ORIGIN`.
 - **A URL is rejected as private:** this is SSRF protection; only opt in with `ALLOW_PRIVATE_URLS=true` on a trusted loopback deployment.
 - **Pause or resume fails on Windows:** use Cancel; process suspension is intentionally unsupported there.

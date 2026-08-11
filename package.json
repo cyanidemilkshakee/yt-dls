@@ -1,29 +1,18 @@
 {
   "name": "yt-dl-studio",
   "version": "1.0.0",
-  "description": "A modern GUI for yt-dlp with HTML/CSS/JS",
-  "main": "backend/server.js",
+  "description": "A modern GUI for yt-dlp with HTML/CSS/JS served via Go",
   "scripts": {
-    "start": "node backend/server.js",
-    "dev": "nodemon backend/server.js",
-    "build": "npm run check",
-    "css:watch": "tailwindcss -o frontend/styles.css --watch",
-    "test": "node test/commandBuilder.test.js && node test/progressTracker.test.js && node test/server.test.js",
-    "check": "npm test && node --check backend/server.js"
+    "start": "cd go && go run cmd/server/main.go",
+    "dev": "cd go && go run cmd/server/main.go",
+    "build": "cd go && go build -o ../yt-dls.exe cmd/server/main.go",
+    "css:watch": "tailwindcss -o go/frontend/styles.css --watch",
+    "css:build": "tailwindcss -o go/frontend/styles.css --minify",
+    "test": "cd go && go test ./...",
+    "check": "npm run test"
   },
   "dependencies": {
     "@tailwindcss/cli": "^4.1.13",
-    "cors": "^2.8.5",
-    "express": "^4.22.2",
-    "tailwindcss": "^4.1.13",
-    "uuid": "^9.0.1",
-    "winston": "^3.11.0",
-    "winston-daily-rotate-file": "^4.7.1"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.2"
-  },
-  "engines": {
-    "node": ">=22.0.0"
+    "tailwindcss": "^4.1.13"
   }
 }
