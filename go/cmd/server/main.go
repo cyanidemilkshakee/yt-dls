@@ -70,7 +70,9 @@ func main() {
 	// Shutdown HTTP Server
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	server.Shutdown(ctx)
+	if err := server.Shutdown(ctx); err != nil {
+		fmt.Printf("HTTP server shutdown error: %v\n", err)
+	}
 
 	// Stop worker pool
 	pool.Stop()
