@@ -19,6 +19,7 @@ A local-first web GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp), built with
 - Go 1.21 or newer (for building)
 - yt-dlp 2026.06.09 or newer
 - FFmpeg in `PATH` for merging and post-processing
+- **Node.js, Deno, or Bun** installed on the system (Required by yt-dlp for YouTube signature extraction)
 
 Verify the external tools:
 
@@ -67,6 +68,7 @@ Copy `.env.example` to `.env` to override the defaults. The Go app parses `.env`
 | `DOWNLOAD_DIR` | `./downloads` | Server-controlled output directory |
 | `LOG_DIR` | `./logs` | Rotating log directory |
 | `YTDLP_PATH` | `yt-dlp` | yt-dlp executable name or absolute path |
+| `YTDLP_JS_RUNTIME` | `""` | Optional JS runtime for yt-dlp (e.g. `node`, `deno`) |
 | `LOG_LEVEL` | `info` | application log level |
 | `MAX_CONCURRENT_DOWNLOADS` | `3` | Maximum active yt-dlp processes |
 | `MAX_DOWNLOAD_DURATION_MS` | `1800000` | Hard timeout per download |
@@ -152,6 +154,7 @@ go/
 ## Troubleshooting
 
 - **yt-dlp is not available:** confirm `yt-dlp --version` works in the same terminal, or configure `YTDLP_PATH`.
+- **yt-dlp complains about missing JS runtime:** YouTube extraction now requires an external JS runtime. Install [Deno](https://deno.land/) or [Node.js](https://nodejs.org/), and ensure they are in your system's `PATH`.
 - **FFmpeg is missing or merging fails:** install FFmpeg and ensure `ffmpeg -version` works.
 - **The page does not open:** browse to `http://127.0.0.1:7391` and inspect the console logs.
 - **CORS request rejected:** use the built-in frontend or add the exact separate frontend origin to `FRONTEND_ORIGIN`.
