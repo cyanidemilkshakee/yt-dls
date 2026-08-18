@@ -1,4 +1,3 @@
-// Phase 2 — Queue + Worker Core
 package main
 
 import (
@@ -10,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cyanidemilkshakee/yt-dls/go/internal/api"
+	"github.com/cyanidemilkshakee/yt-dls/go/internal/handlers"
 
 	"github.com/cyanidemilkshakee/yt-dls/go/internal/bus"
 	"github.com/cyanidemilkshakee/yt-dls/go/internal/config"
@@ -21,13 +20,12 @@ import (
 
 func main() {
 	cfg := config.Load()
-	fmt.Printf("YT-DL Studio — Phase 2 OK\n")
+	fmt.Printf("YT-DL Studio\n")
 	fmt.Printf("  ytdlp   : %s\n", cfg.YtDlpPath)
 	fmt.Printf("  host    : %s:%d\n", cfg.Host, cfg.Port)
 	fmt.Printf("  dldir   : %s\n", cfg.DownloadDir)
 	fmt.Printf("  workers : %d\n", cfg.MaxConcurrentDownloads)
 
-	// Phase 3: Init Bus, Gateway, and Store
 	eventBus := bus.New()
 	sseGateway := sse.NewGateway(eventBus)
 	
@@ -36,9 +34,8 @@ func main() {
 	
 	// Start worker pool
 	pool.Start()
-	fmt.Println("Worker pool started.")
 
-	app := &api.App{
+	app := &handlers.App{
 		Cfg:        cfg,
 		Pool:       pool,
 		Store:      progressStore,
@@ -46,8 +43,6 @@ func main() {
 	}
 
 	router := app.Router()
-
-	// Phase 4: Start HTTP Server
 	server := &http.Server{
 		Addr:    fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
 		Handler: router,
