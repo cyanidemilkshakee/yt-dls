@@ -1,6 +1,11 @@
 package frontend
 
-import "embed"
+import (
+	"embed"
+	"io/fs"
+)
 
-//go:embed *.html *.css *.js js
-var FS embed.FS
+//go:embed dist/*
+var fsRaw embed.FS
+
+var FS, _ = fs.Sub(fsRaw, "dist")
