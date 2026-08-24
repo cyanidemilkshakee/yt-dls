@@ -41,7 +41,3 @@ func (q *Queue[T]) Next(ctx context.Context) (T, error) {
 	}
 }
 
-// Len returns the current number of items in the queue.
-func (q *Queue[T]) Len() int {
-	return len(q.items)
-}
