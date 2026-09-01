@@ -26,22 +26,22 @@ type Config struct {
 	YtDlpJSRuntime string // optional custom JS runtime (e.g. node, deno)
 
 	// ── HTTP server ─────────────────────────────────────────────────────────
-	Port            int
-	Host            string
+	Port int
+	Host string
 
 	// ── Security / access ───────────────────────────────────────────────────
-	AllowCustomDownloadPath   bool
-	AllowDangerousOptions     bool
-	AllowPrivateURLs          bool
-	FrontendOrigins           []string // extra allowed CORS origins
+	AllowCustomDownloadPath bool
+	AllowDangerousOptions   bool
+	AllowPrivateURLs        bool
+	FrontendOrigins         []string // extra allowed CORS origins
 
 	// ── Logging ─────────────────────────────────────────────────────────────
 	LogLevel string // "debug" | "info" | "warn" | "error"
 
 	// ── Limits ──────────────────────────────────────────────────────────────
-	MaxConcurrentDownloads    int
-	MaxDownloadDurationMs     int64
-	InfoTimeoutMs             int64
+	MaxConcurrentDownloads int
+	MaxDownloadDurationMs  int64
+	InfoTimeoutMs          int64
 }
 
 // Load reads configuration from the environment (and an optional .env file at
@@ -54,22 +54,22 @@ func Load() *Config {
 	_ = godotenv.Load(filepath.Join(root, ".env"))
 
 	cfg := &Config{
-		RootDir:     root,
+		RootDir: root,
 
 		YtDlpPath:      strEnv("YTDLP_PATH", "yt-dlp"),
 		YtDlpJSRuntime: strEnv("YTDLP_JS_RUNTIME", ""),
 		Host:           strEnv("HOST", "127.0.0.1"),
-		LogLevel:  strEnv("LOG_LEVEL", "info"),
+		LogLevel:       strEnv("LOG_LEVEL", "info"),
 
-		Port:            intEnv("PORT", 7391, 1, 65535),
+		Port: intEnv("PORT", 7391, 1, 65535),
 
 		AllowCustomDownloadPath: boolEnv("ALLOW_CUSTOM_DOWNLOAD_PATH", false),
 		AllowDangerousOptions:   boolEnv("ALLOW_DANGEROUS_OPTIONS", false),
 		AllowPrivateURLs:        boolEnv("ALLOW_PRIVATE_URLS", false),
 
-		MaxConcurrentDownloads:    intEnv("MAX_CONCURRENT_DOWNLOADS", 3, 1, 32),
-		MaxDownloadDurationMs:     i64Env("MAX_DOWNLOAD_DURATION_MS", 30*60*1000, 10_000),
-		InfoTimeoutMs:             i64Env("INFO_TIMEOUT_MS", 120_000, 5_000),
+		MaxConcurrentDownloads: intEnv("MAX_CONCURRENT_DOWNLOADS", 3, 1, 32),
+		MaxDownloadDurationMs:  i64Env("MAX_DOWNLOAD_DURATION_MS", 30*60*1000, 10_000),
+		InfoTimeoutMs:          i64Env("INFO_TIMEOUT_MS", 120_000, 5_000),
 	}
 
 	cfg.DownloadDir = resolvePath(root, strEnv("DOWNLOAD_DIR", ""), "downloads")
@@ -85,8 +85,25 @@ func Load() *Config {
 
 // ─── internal helpers ────────────────────────────────────────────────────────
 
+// walkUp walks up from dir looking for a subdirectory named marker, checking up
+// to maxDepth levels. Returns the directory that contains marker, or "".
+func walkUp(dir, marker string, maxDepth int) string {
+	for range maxDepth {
+		if _, err := os.Stat(filepath.Join(dir, marker)); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir { // filesystem root reached
+			return ""
+		}
+		dir = parent
+	}
+	return ""
+}
+
 // findRootDir walks up from the binary's directory looking for the project root,
-// identified by the presence of a frontend/ subdirectory.
+// identified by the presence of a frontend/ subdirectory. Falls back to cwd on
+// `go run` (where the binary lives in a temp dir).
 func findRootDir() string {
 	ex, err := os.Executable()
 	if err != nil {
@@ -96,31 +113,14 @@ func findRootDir() string {
 		return "."
 	}
 
-	dir := filepath.Dir(ex)
-	for range 6 {
-		if _, err := os.Stat(filepath.Join(dir, "frontend")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir { // filesystem root reached
-			break
-		}
-		dir = parent
+	if found := walkUp(filepath.Dir(ex), "frontend", 6); found != "" {
+		return found
 	}
 
 	// During `go run` the executable sits in a temp dir; fall back to cwd.
 	if cwd, _ := os.Getwd(); cwd != "" {
-		// Walk up from cwd too.
-		dir = cwd
-		for range 6 {
-			if _, err := os.Stat(filepath.Join(dir, "frontend")); err == nil {
-				return dir
-			}
-			parent := filepath.Dir(dir)
-			if parent == dir {
-				break
-			}
-			dir = parent
+		if found := walkUp(cwd, "frontend", 6); found != "" {
+			return found
 		}
 	}
 
