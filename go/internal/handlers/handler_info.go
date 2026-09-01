@@ -39,6 +39,7 @@ func (a *App) HandleInfo(w http.ResponseWriter, r *http.Request) {
 	// Also accept query param for GET compatibility, though POST is preferred in JSON
 	req.URL = r.URL.Query().Get("url")
 	if req.URL == "" {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB cap
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.URL == "" {
 			sendError(w, http.StatusBadRequest, "Missing or invalid 'url' parameter")
 			return
@@ -86,6 +87,16 @@ func (a *App) HandleInfo(w http.ResponseWriter, r *http.Request) {
 
 	out, cmdErr := cmd.Output()
 	if cmdErr != nil {
+		// FIX: check deadline first — if the context expired, always send 504
+		// regardless of what the process exit error says.
+		if ctx.Err() == context.DeadlineExceeded {
+			sendJSON(w, http.StatusGatewayTimeout, map[string]string{
+				"error":      "Metadata request timed out.",
+				"error_code": "PROCESS_TIMEOUT",
+			})
+			return
+		}
+
 		stderr := ""
 		if exitErr, ok := cmdErr.(*exec.ExitError); ok {
 			stderr = strings.ToLower(strings.TrimSpace(string(exitErr.Stderr)))
@@ -102,14 +113,6 @@ func (a *App) HandleInfo(w http.ResponseWriter, r *http.Request) {
 		} else if strings.Contains(stderr, "403") || strings.Contains(stderr, "forbidden") {
 			status = http.StatusForbidden
 			code = "ACCESS_FORBIDDEN"
-		}
-
-		if ctx.Err() == context.DeadlineExceeded {
-			sendJSON(w, http.StatusGatewayTimeout, map[string]string{
-				"error":      "Metadata request timed out.",
-				"error_code": "PROCESS_TIMEOUT",
-			})
-			return
 		}
 
 		sendJSON(w, status, map[string]string{
@@ -323,7 +326,12 @@ func processInfoDict(info map[string]any) map[string]any {
 		}
 	}
 
-	allVideoFormats := append(combinedFormats, videoFormats...)
+	// FIX: allocate a fresh slice to avoid aliasing combinedFormats' backing array.
+	// append(combinedFormats, videoFormats...) would silently overwrite combinedFormats
+	// if it had spare capacity from a prior append.
+	allVideoFormats := make([]map[string]any, 0, len(combinedFormats)+len(videoFormats))
+	allVideoFormats = append(allVideoFormats, combinedFormats...)
+	allVideoFormats = append(allVideoFormats, videoFormats...)
 	
 	// Sort videos by height desc, vbr desc, fps desc
 	sort.SliceStable(allVideoFormats, func(i, j int) bool {

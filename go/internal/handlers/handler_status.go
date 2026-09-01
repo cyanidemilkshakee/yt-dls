@@ -107,12 +107,15 @@ func (a *App) HandleDeleteDownload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	dp, ok := a.Store.Get(id)
-	if ok {
-		// Stop the worker immediately
-		dp.Cancel()
-		// Remove from store unconditionally
-		a.Store.Delete(id)
+	if !ok {
+		// FIX: return 404 instead of silently returning 200 for unknown IDs.
+		sendError(w, http.StatusNotFound, "Download not found")
+		return
 	}
+
+	// Stop the worker immediately, then remove from store.
+	dp.Cancel()
+	a.Store.Delete(id)
 
 	sendJSON(w, http.StatusOK, map[string]string{
 		"status":  "success",

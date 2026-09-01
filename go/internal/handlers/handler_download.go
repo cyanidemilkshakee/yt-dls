@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"runtime"
 	"strings"
 
 	"github.com/cyanidemilkshakee/yt-dls/go/internal/store"
@@ -13,6 +14,9 @@ import (
 
 // HandleStartDownload handles POST /api/download
 func (a *App) HandleStartDownload(w http.ResponseWriter, r *http.Request) {
+	// FIX: cap request body to 1 MB to prevent memory exhaustion.
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
 	var req worker.DownloadOptions
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		sendError(w, http.StatusBadRequest, "Invalid JSON payload")
@@ -48,16 +52,16 @@ func (a *App) HandleStartDownload(w http.ResponseWriter, r *http.Request) {
 	dp := store.NewDownloadProgress(downloadID, expectedVideo, expectedAudio)
 	dp.URL = req.URL
 
-	// FIX: Register in the store BEFORE enqueueing.
+	// Register in the store BEFORE enqueueing.
 	// The worker calls Store.Get(id) as its first action.
 	// If the job is dispatched before the store entry exists, the worker silently exits.
 	a.Store.Set(downloadID, dp)
 
 	// Enqueue job. If the queue is full, remove the store entry and reject.
 	job := worker.Job{
-		ID:      downloadID,
-		Opts:    req,
-		DlDir:   dlDir,
+		ID:    downloadID,
+		Opts:  req,
+		DlDir: dlDir,
 	}
 	if err := a.Pool.Enqueue(job); err != nil {
 		a.Store.Delete(downloadID) // rollback
@@ -84,18 +88,31 @@ func (a *App) HandleListDownloads(w http.ResponseWriter, r *http.Request) {
 
 // HandleCommandPreview handles POST /api/download/command-preview
 func (a *App) HandleCommandPreview(w http.ResponseWriter, r *http.Request) {
+	// FIX: cap request body to 1 MB.
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
 	var req worker.DownloadOptions
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		sendError(w, http.StatusBadRequest, "Invalid JSON payload")
 		return
 	}
 
+	// FIX: validate URL even for previews — without this, any URL (including
+	// SSRF targets) could be embedded in the built command.
+	if strings.TrimSpace(req.URL) != "" {
+		validURL, err := validation.ValidateMediaURL(req.URL, a.Cfg)
+		if err != nil {
+			sendError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		req.URL = validURL
+	} else {
+		req.URL = "https://example.com/video"
+	}
+
 	dlDir := req.DownloadPath
 	if dlDir == "" {
 		dlDir = a.Cfg.DownloadDir
-	}
-	if req.URL == "" {
-		req.URL = "https://example.com/video"
 	}
 
 	res, err := worker.BuildCommand(req, dlDir, a.Cfg)
@@ -111,17 +128,33 @@ func (a *App) HandleCommandPreview(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandlePauseDownload handles POST /api/download/{id}/pause
+// FIX: check OS at runtime instead of hard-coding the Windows message.
 func (a *App) HandlePauseDownload(w http.ResponseWriter, r *http.Request) {
+	if runtime.GOOS == "windows" {
+		sendJSON(w, http.StatusNotImplemented, map[string]string{
+			"error":      "Pause/Resume is not supported on Windows. Use cancel instead.",
+			"error_code": "WINDOWS_UNSUPPORTED",
+		})
+		return
+	}
+	// Linux/macOS: SIGSTOP/SIGCONT support could be added here in the future.
 	sendJSON(w, http.StatusNotImplemented, map[string]string{
-		"error":      "Pause/Resume is not supported on Windows. Use cancel instead.",
-		"error_code": "WINDOWS_UNSUPPORTED",
+		"error":      "Pause/Resume is not yet implemented.",
+		"error_code": "NOT_IMPLEMENTED",
 	})
 }
 
 // HandleResumeDownload handles POST /api/download/{id}/resume
 func (a *App) HandleResumeDownload(w http.ResponseWriter, r *http.Request) {
+	if runtime.GOOS == "windows" {
+		sendJSON(w, http.StatusNotImplemented, map[string]string{
+			"error":      "Pause/Resume is not supported on Windows. Use cancel instead.",
+			"error_code": "WINDOWS_UNSUPPORTED",
+		})
+		return
+	}
 	sendJSON(w, http.StatusNotImplemented, map[string]string{
-		"error":      "Pause/Resume is not supported on Windows. Use cancel instead.",
-		"error_code": "WINDOWS_UNSUPPORTED",
+		"error":      "Pause/Resume is not yet implemented.",
+		"error_code": "NOT_IMPLEMENTED",
 	})
 }
