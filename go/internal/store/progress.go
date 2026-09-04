@@ -115,14 +115,17 @@ func (dp *DownloadProgress) Cancel() {
 	dp.cancel()
 }
 
+const maxLogLines = 200
+
 // AddLogLocked appends a log line WITHOUT acquiring the lock.
 // It MUST only be called when the caller already holds dp.mu (i.e. inside an Update callback).
+// FIX: previous implementation used copy+truncate which left a duplicate of the
+// last entry. Now we drop the oldest line first, then append.
 func (dp *DownloadProgress) AddLogLocked(msg string) {
-	dp.Log = append(dp.Log, msg)
-	if len(dp.Log) > 200 {
-		copy(dp.Log, dp.Log[1:])
-		dp.Log = dp.Log[:200]
+	if len(dp.Log) >= maxLogLines {
+		dp.Log = dp.Log[1:] // drop oldest
 	}
+	dp.Log = append(dp.Log, msg)
 }
 
 // AddLog safely appends a log line (acquires the write-lock).
@@ -268,13 +271,20 @@ func (dp *DownloadProgress) MarkIncompleteStreams(status string) {
 }
 
 // ProgressStore manages all active and recently completed downloads.
+//
+// Uses a RWMutex-protected plain map instead of sync.Map.  Active downloads
+// fire progress updates every few hundred milliseconds (many writes per key),
+// which is the exact workload where sync.Map's read-optimised design is
+// counter-productive.
 type ProgressStore struct {
-	data     sync.Map // map[string]*DownloadProgress
+	mu       sync.RWMutex
+	data     map[string]*DownloadProgress
 	eventBus *bus.Bus
 }
 
 func NewProgressStore(eventBus *bus.Bus) *ProgressStore {
 	return &ProgressStore{
+		data:     make(map[string]*DownloadProgress),
 		eventBus: eventBus,
 	}
 }
@@ -289,55 +299,66 @@ func (s *ProgressStore) Set(id string, dp *DownloadProgress) {
 			})
 		}
 	}
-	s.data.Store(id, dp)
+	s.mu.Lock()
+	s.data[id] = dp
+	s.mu.Unlock()
 }
 
 func (s *ProgressStore) Get(id string) (*DownloadProgress, bool) {
-	v, ok := s.data.Load(id)
-	if !ok {
-		return nil, false
-	}
-	return v.(*DownloadProgress), true
+	s.mu.RLock()
+	dp, ok := s.data[id]
+	s.mu.RUnlock()
+	return dp, ok
 }
 
 func (s *ProgressStore) Delete(id string) {
-	s.data.Delete(id)
+	s.mu.Lock()
+	delete(s.data, id)
+	s.mu.Unlock()
 }
 
 // CleanupOldDownloads removes terminal downloads older than maxAge.
+// Collects candidates under a read lock, then removes them under a write lock
+// to keep the critical section as short as possible.
 func (s *ProgressStore) CleanupOldDownloads(maxAge time.Duration) int {
 	now := time.Now()
-	removed := 0
 
-	s.data.Range(func(key, value interface{}) bool {
-		id := key.(string)
-		dp := value.(*DownloadProgress)
-
+	s.mu.RLock()
+	var toRemove []string
+	for id, dp := range s.data {
 		snap := dp.Snapshot()
 		if snap.Status == "completed" || snap.Status == "failed" || snap.Status == "cancelled" {
 			refTime := snap.StartedAt
 			if snap.CompletedAt != nil {
 				refTime = snap.CompletedAt
 			}
-			
 			if refTime != nil && now.Sub(*refTime) > maxAge {
-				s.data.Delete(id)
-				removed++
+				toRemove = append(toRemove, id)
 			}
 		}
-		return true
-	})
+	}
+	s.mu.RUnlock()
 
-	return removed
+	if len(toRemove) == 0 {
+		return 0
+	}
+
+	s.mu.Lock()
+	for _, id := range toRemove {
+		delete(s.data, id)
+	}
+	s.mu.Unlock()
+
+	return len(toRemove)
 }
 
 // SnapshotAll returns snapshots of all downloads in the store.
 func (s *ProgressStore) SnapshotAll() []ProgressSnapshot {
-	var out []ProgressSnapshot
-	s.data.Range(func(key, value interface{}) bool {
-		dp := value.(*DownloadProgress)
+	s.mu.RLock()
+	out := make([]ProgressSnapshot, 0, len(s.data))
+	for _, dp := range s.data {
 		out = append(out, dp.Snapshot())
-		return true
-	})
+	}
+	s.mu.RUnlock()
 	return out
 }

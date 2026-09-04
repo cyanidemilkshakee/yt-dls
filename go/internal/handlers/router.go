@@ -37,8 +37,12 @@ func (a *App) Router() chi.Router {
 	r.Use(middleware.Timeout(60 * time.Second)) // generic timeout
 
 	// CORS
+	// FIX: replace the wildcard "*" origin (which is incompatible with
+	// AllowCredentials:true per the CORS spec) with an explicit allowlist
+	// seeded from the embedded frontend origin and any extras in config.
+	allowedOrigins := buildCORSOrigins(a.Cfg)
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"*"}, // Adjust in prod
+		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		ExposedHeaders:   []string{"Link"},
@@ -51,7 +55,7 @@ func (a *App) Router() chi.Router {
 		r.Get("/health", a.HandleHealth)
 		r.Get("/info", a.HandleInfo)
 		r.Post("/info", a.HandleInfo)
-		
+
 		r.Route("/downloads", func(r chi.Router) {
 			r.Get("/", a.HandleListDownloads)
 			// SSE is a long-lived connection — override the global timeout by
@@ -86,7 +90,7 @@ func (a *App) Router() chi.Router {
 		} else {
 			path = path[1:] // strip leading slash
 		}
-		
+
 		_, err := fs.Stat(frontend.FS, path)
 		if err != nil {
 			// File does not exist, serve index.html for client-side routing
@@ -96,6 +100,18 @@ func (a *App) Router() chi.Router {
 	})
 
 	return r
+}
+
+// buildCORSOrigins returns the CORS allowed-origins list.
+// Always includes the default local frontend; appends any extras from config.
+func buildCORSOrigins(cfg *config.Config) []string {
+	// Default: the embedded frontend served by this server.
+	origins := []string{
+		"http://localhost:7391",
+		"http://127.0.0.1:7391",
+	}
+	origins = append(origins, cfg.FrontendOrigins...)
+	return origins
 }
 
 // Helper: sendJSON encodes data to JSON and writes it.
@@ -112,11 +128,14 @@ func sendError(w http.ResponseWriter, status int, message string) {
 	sendJSON(w, status, map[string]string{"error": message})
 }
 
-// noTimeout is a middleware that strips any deadline from the request context.
-// Used on the SSE /events endpoint to prevent chi's global 60-second timeout
-// from disconnecting long-lived streaming connections.
+// noTimeout is a middleware that strips any deadline from the request context
+// while preserving all parent context values (request ID, real IP, etc.).
+//
+// FIX: the previous version used context.Background() which discarded all
+// parent values. context.WithoutCancel inherits values but has no deadline,
+// which is exactly what long-lived SSE connections need.
 func noTimeout(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		next.ServeHTTP(w, r.WithContext(context.Background()))
+		next.ServeHTTP(w, r.WithContext(context.WithoutCancel(r.Context())))
 	})
 }
