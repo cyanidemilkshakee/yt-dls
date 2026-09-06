@@ -145,6 +145,9 @@ func ValidateMediaURL(rawURL string, cfg *config.Config) (string, error) {
 // An empty or default requestedPath returns cfg.DownloadDir.
 // Custom paths require AllowCustomDownloadPath to be enabled.
 // Mirrors resolveDownloadDirectory() in validation.js.
+//
+// FIX: path traversal guard added — the resolved path must be confined to
+// cfg.RootDir. Without this, "../../../etc" would escape the root directory.
 func ResolveDownloadDirectory(requestedPath string, cfg *config.Config) (string, error) {
 	trimmed := strings.TrimSpace(requestedPath)
 	if trimmed == "" || defaultDirRe.MatchString(trimmed) {
@@ -153,7 +156,24 @@ func ResolveDownloadDirectory(requestedPath string, cfg *config.Config) (string,
 	if !cfg.AllowCustomDownloadPath {
 		return "", &Error{"Custom download paths are disabled by the server.", "CUSTOM_PATH_DISABLED"}
 	}
-	return filepath.Join(cfg.RootDir, trimmed), nil
+
+	// Reject absolute paths that escape the root (e.g. C:\Windows or /etc).
+	// Relative paths are joined with RootDir and then confined.
+	var resolved string
+	if filepath.IsAbs(trimmed) {
+		resolved = trimmed
+	} else {
+		resolved = filepath.Join(cfg.RootDir, trimmed)
+	}
+	resolved = filepath.Clean(resolved)
+
+	// Confinement check: the resolved path must sit inside (or equal) RootDir.
+	rootClean := filepath.Clean(cfg.RootDir)
+	if resolved != rootClean && !strings.HasPrefix(resolved, rootClean+string(filepath.Separator)) {
+		return "", &Error{"Path traversal is not allowed.", "INVALID_PATH"}
+	}
+
+	return resolved, nil
 }
 
 // defaultDirRe matches the placeholder "downloads" path sent by the frontend.
@@ -190,9 +210,13 @@ func ValidateFilenameTemplate(value string) (string, error) {
 // OneOf returns value if it is one of the allowed strings.
 // An empty or "default" value returns ("", nil) — the option is simply omitted.
 // Mirrors oneOf() in validation.js.
+//
+// FIX: previously returned the literal string "default" for the "default" case,
+// which meant every caller had to guard against it with `!= "default"`.
+// Now both "" and "default" normalise to "" so callers only need `!= ""`.
 func OneOf(value string, allowed []string, name string) (string, error) {
 	if value == "" || value == "default" {
-		return value, nil
+		return "", nil
 	}
 	for _, a := range allowed {
 		if a == value {
