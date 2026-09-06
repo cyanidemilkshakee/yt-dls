@@ -153,7 +153,7 @@ func BuildCommand(opts DownloadOptions, downloadDirectory string, cfg *config.Co
 	if err != nil {
 		return BuildResult{}, err
 	}
-	if outputFmt != "" && outputFmt != "default" {
+	if outputFmt != "" {
 		b.add("--merge-output-format", outputFmt)
 	}
 
@@ -334,7 +334,8 @@ func BuildCommand(opts DownloadOptions, downloadDirectory string, cfg *config.Co
 		t := *adv.SocketTimeout
 		if t < 1 || t > 3600 {
 			return BuildResult{}, &validation.Error{
-				"socket timeout must be between 1 and 3600.", "INVALID_OPTION",
+				Message: "socket timeout must be between 1 and 3600.",
+				Code:    "INVALID_OPTION",
 			}
 		}
 		b.add("--socket-timeout", strconv.Itoa(t))
@@ -354,7 +355,8 @@ func BuildCommand(opts DownloadOptions, downloadDirectory string, cfg *config.Co
 
 	if adv.ForceIPv4 && adv.ForceIPv6 {
 		return BuildResult{}, &validation.Error{
-			"IPv4 and IPv6 cannot both be forced.", "CONFLICTING_OPTIONS",
+			Message: "IPv4 and IPv6 cannot both be forced.",
+			Code:    "CONFLICTING_OPTIONS",
 		}
 	}
 	if adv.ForceIPv4 {
@@ -422,7 +424,8 @@ func BuildCommand(opts DownloadOptions, downloadDirectory string, cfg *config.Co
 		r := *adv.ExtractorRetries
 		if r < 0 || r > 100 {
 			return BuildResult{}, &validation.Error{
-				"extractor retries must be between 0 and 100.", "INVALID_OPTION",
+				Message: "extractor retries must be between 0 and 100.",
+				Code:    "INVALID_OPTION",
 			}
 		}
 		extractorRetries = r
@@ -563,12 +566,12 @@ func validateFormatSelector(value string) (string, error) {
 	}
 	s := strings.TrimSpace(value)
 	if len(s) > 300 {
-		return "", &validation.Error{"Format selector is too long.", "INVALID_FORMAT_SELECTOR"}
+		return "", &validation.Error{Message: "Format selector is too long.", Code: "INVALID_FORMAT_SELECTOR"}
 	}
 	if !formatSelectorRe.MatchString(s) {
 		return "", &validation.Error{
-			"The format selector contains unsupported characters.",
-			"INVALID_FORMAT_SELECTOR",
+			Message: "The format selector contains unsupported characters.",
+			Code:    "INVALID_FORMAT_SELECTOR",
 		}
 	}
 	return s, nil
@@ -586,8 +589,8 @@ func validateAudioQuality(value string) (string, error) {
 	q := strings.TrimSpace(value)
 	if !audioQualityRe.MatchString(q) {
 		return "", &validation.Error{
-			"Audio quality must be 0–10 or a bitrate such as 128K.",
-			"INVALID_OPTION",
+			Message: "Audio quality must be 0–10 or a bitrate such as 128K.",
+			Code:    "INVALID_OPTION",
 		}
 	}
 	return q, nil
