@@ -132,10 +132,10 @@ func TestOneOf(t *testing.T) {
 		{"mp4", "mp4", false},
 		{"mkv", "mkv", false},
 		{"webm", "webm", false},
-		{"", "", false},         // empty → passthrough
-		{"default", "default", false}, // "default" → passthrough
-		{"avi", "", true},       // not in allowed list
-		{"MP4", "", true},       // case-sensitive
+		{"", "", false},        // empty → passthrough as ""
+		{"default", "", false}, // "default" normalises to "" (same as empty)
+		{"avi", "", true},      // not in allowed list
+		{"MP4", "", true},      // case-sensitive
 	}
 
 	for _, tc := range tests {
@@ -189,6 +189,12 @@ func TestResolveDownloadDirectory(t *testing.T) {
 	want := filepath.Join("/root", "mydir")
 	if got != want {
 		t.Errorf("ResolveDownloadDirectory(mydir) = %q, want %q", got, want)
+	}
+
+	// Path traversal must be rejected even when AllowCustomDownloadPath is true.
+	_, err = validation.ResolveDownloadDirectory("../../etc", &cfgCustom)
+	if err == nil {
+		t.Error("expected error for path traversal attempt, got nil")
 	}
 }
 

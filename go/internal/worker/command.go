@@ -67,6 +67,8 @@ type AdvancedSettings struct {
 	ClientCertificate        string `json:"client-certificate"`
 	ClientCertificateKey     string `json:"client-certificate-key"`
 	ClientCertPassword       string `json:"client-certificate-password"`
+	Cookies                  string `json:"cookies"`
+	CookiesFromBrowser       string `json:"cookies-from-browser"`
 	ExtractorRetries         *int   `json:"extractor-retries"`
 	IgnoreDynamicMpd         bool   `json:"ignore-dynamic-mpd"`
 	HlsSplitDiscontinuity    bool   `json:"hls-split-discontinuity"`
@@ -74,6 +76,12 @@ type AdvancedSettings struct {
 	FfmpegLocation           string `json:"ffmpeg-location"`
 	Exec                     string `json:"exec"`
 	NoExec                   bool   `json:"no-exec"`
+	SponsorblockMark         string `json:"sponsorblock-mark"`
+	SponsorblockRemove       string `json:"sponsorblock-remove"`
+	SponsorblockChapterTitle string `json:"sponsorblock-chapter-title"`
+	SponsorblockAPI          string `json:"sponsorblock-api"`
+	NoSponsorblock           bool   `json:"no-sponsorblock"`
+	DownloadArchive          string `json:"download-archive"`
 }
 
 // DownloadOptions mirrors the JSON request body sent by the frontend on
@@ -416,6 +424,40 @@ func BuildCommand(opts DownloadOptions, downloadDirectory string, cfg *config.Co
 		// Certificate password is not a "dangerous" option — it's always allowed
 		// when a certificate is provided.
 		b.add("--client-certificate-password", ccp)
+	}
+
+	if c := strOpt(adv.Cookies, 500); c != "" {
+		if err := b.dangerous("--cookies", c, "Cookies file"); err != nil {
+			return BuildResult{}, err
+		}
+	}
+	if c := strOpt(adv.CookiesFromBrowser, 500); c != "" {
+		if err := b.dangerous("--cookies-from-browser", c, "Cookies from browser"); err != nil {
+			return BuildResult{}, err
+		}
+	}
+
+	if da := strOpt(adv.DownloadArchive, 500); da != "" {
+		if err := b.dangerous("--download-archive", da, "Download archive file"); err != nil {
+			return BuildResult{}, err
+		}
+	}
+
+	if adv.NoSponsorblock {
+		b.add("--no-sponsorblock")
+	} else {
+		if sm := strOpt(adv.SponsorblockMark, 500); sm != "" {
+			b.add("--sponsorblock-mark", sm)
+		}
+		if sr := strOpt(adv.SponsorblockRemove, 500); sr != "" {
+			b.add("--sponsorblock-remove", sr)
+		}
+		if sct := strOpt(adv.SponsorblockChapterTitle, 500); sct != "" {
+			b.add("--sponsorblock-chapter-title", sct)
+		}
+		if sa := strOpt(adv.SponsorblockAPI, 500); sa != "" {
+			b.add("--sponsorblock-api", sa)
+		}
 	}
 
 	// Extractor options

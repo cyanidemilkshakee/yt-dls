@@ -237,6 +237,10 @@ export default function ConfigSection({ info, onClose, onDownloadStarted }) {
     try {
       const vid = [...selectedVideoIds].join('+') || 'bestvideo';
       const aud = [...selectedAudioIds].join('+') || 'bestaudio';
+      
+      const { getSettings } = await import('../../services/api');
+      const advancedSettings = await getSettings();
+
       await startDownload({
         url: info.original_url,
         formatCode: downloadMode === 'both' ? `${vid}+${aud}/best`
@@ -253,6 +257,7 @@ export default function ConfigSection({ info, onClose, onDownloadStarted }) {
         parseMetadata: openMeta ? parseMetadata : null,
         replaceInMetadata: openMeta ? replaceMetadata : null,
         xattrs: writeXattrs, fixup: fixupPolicy, splitChapters, forceKeyframes, concatPlaylist,
+        advancedSettings,
       });
       onDownloadStarted?.();
       onClose?.();

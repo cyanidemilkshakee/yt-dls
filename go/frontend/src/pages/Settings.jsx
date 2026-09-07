@@ -25,6 +25,8 @@ export default function Settings() {
     'client-certificate': '',
     'client-certificate-key': '',
     'client-certificate-password': '',
+    'cookies': '',
+    'cookies-from-browser': '',
     'ffmpeg-location': '',
     exec: '',
     'no-exec': false,
@@ -33,6 +35,7 @@ export default function Settings() {
     'sponsorblock-chapter-title': '',
     'sponsorblock-api': '',
     'no-sponsorblock': false,
+    'download-archive': '',
     'extractor-retries': '',
     'extractor-args': '',
     'ignore-dynamic-mpd': false,
@@ -184,6 +187,14 @@ export default function Settings() {
               <label htmlFor="client-certificate-password" className="font-medium">Client Certificate Password</label>
               <input type="password" name="client-certificate-password" className="input-form mt-1" value={settings['client-certificate-password']} onChange={handleChange} />
             </div>
+            <div className="setting-item">
+              <label htmlFor="cookies" className="font-medium">Cookies File (Netscape format)</label>
+              <input type="text" name="cookies" className="input-form mt-1" placeholder="/path/to/cookies.txt" value={settings['cookies']} onChange={handleChange} />
+            </div>
+            <div className="setting-item">
+              <label htmlFor="cookies-from-browser" className="font-medium">Cookies from Browser</label>
+              <input type="text" name="cookies-from-browser" className="input-form mt-1" placeholder="chrome, firefox, brave, etc." value={settings['cookies-from-browser']} onChange={handleChange} />
+            </div>
           </div>
         </section>
 
@@ -202,6 +213,11 @@ export default function Settings() {
             </div>
             <div className="setting-item">
               <label className="flex items-center gap-2 cursor-pointer pt-6"><input type="checkbox" name="no-exec" className="checkbox-style" checked={settings['no-exec']} onChange={handleChange} /> Disable --exec</label>
+            </div>
+            <div className="setting-item col-span-full">
+              <label htmlFor="download-archive" className="font-medium">Download Archive File</label>
+              <input type="text" name="download-archive" className="input-form mt-1" placeholder="/path/to/archive.txt" value={settings['download-archive']} onChange={handleChange} />
+              <p className="setting-description">File to record downloaded videos so they are skipped in future runs.</p>
             </div>
           </div>
         </section>
