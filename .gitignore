@@ -1,14 +1,29 @@
 # Dependencies
 node_modules/
 
-# Logs
+# Build output
+web/dist/
+*.exe
+yt-dls
+yt-dls.exe
+
+# Runtime artifacts
 logs/
 *.log
 *.log.gz
-
-# Downloads
 downloads/
 
-# Binaries
-yt-dls.exe
-yt-dls
+# Environment
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Scratch / temp
+diff.txt
+*.backup

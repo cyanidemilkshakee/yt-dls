@@ -1,18 +1,19 @@
 {
   "name": "yt-dl-studio",
   "version": "1.0.0",
-  "description": "A modern GUI for yt-dlp with HTML/CSS/JS served via Go",
+  "description": "A modern GUI for yt-dlp — Go backend + React frontend",
   "scripts": {
-    "start": "cd go && go run cmd/server/main.go",
-    "dev": "cd go && go run cmd/server/main.go",
-    "build": "cd go && go build -o ../yt-dls.exe cmd/server/main.go",
-    "css:watch": "tailwindcss -o go/frontend/styles.css --watch",
-    "css:build": "tailwindcss -o go/frontend/styles.css --minify",
-    "test": "cd go && go test ./...",
-    "check": "npm run test"
+    "predev:backend": "node scripts/kill-port.mjs 7391",
+    "dev:backend": "node scripts/dev-backend.mjs",
+    "dev:frontend": "npm run dev --prefix web",
+    "dev": "concurrently --kill-others -n backend,frontend -c magenta,cyan \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "build:frontend": "npm run build --prefix web",
+    "build": "npm run build:frontend && go build -o yt-dls.exe ./cmd/server",
+    "start": "go run ./cmd/server",
+    "test": "go test ./..."
   },
-  "dependencies": {
-    "@tailwindcss/cli": "^4.1.13",
-    "tailwindcss": "^4.1.13"
+  "devDependencies": {
+    "concurrently": "^9.0.0",
+    "cross-env": "^7.0.3"
   }
 }
