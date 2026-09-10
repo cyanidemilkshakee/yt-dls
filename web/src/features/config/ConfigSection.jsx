@@ -3,35 +3,6 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { startDownload, getSettings } from '../../services/api';
 
-/* ── tiny helpers ─────────────────────────────────────────────────────────── */
-function Toggle({ checked, onChange }) {
-  return (
-    <label className="tog-label" style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-      <input type="checkbox" checked={checked} onChange={onChange} style={{ display: 'none' }} />
-      <div 
-        className={`tog-track ${checked ? 'checked' : ''}`}
-        style={{ 
-          width: 40, height: 24, borderRadius: 12, 
-          backgroundColor: checked ? 'var(--primary-green)' : 'var(--bg-modifier-hover)',
-          position: 'relative', transition: 'background-color 0.2s'
-        }}
-      >
-        <motion.div 
-          layout
-          initial={false}
-          animate={{ x: checked ? 16 : 2 }}
-          transition={{ type: "spring", stiffness: 500, damping: 30 }}
-          className="tog-thumb"
-          style={{
-            width: 20, height: 20, borderRadius: 10,
-            backgroundColor: 'white', position: 'absolute', top: 2
-          }}
-        />
-      </div>
-    </label>
-  );
-}
-
 function Checkbox({ checked, onChange, disabled, children }) {
   return (
     <label className="cb-label">
@@ -170,14 +141,16 @@ export default function ConfigSection({ info, onClose, onDownloadStarted }) {
   const handleVideoFormatClick = (id) => {
     if (multiVideo) {
       const s = new Set(selectedVideoIds);
-      s.has(id) ? s.delete(id) : s.add(id);
+      if (s.has(id)) s.delete(id);
+      else s.add(id);
       setSelectedVideoIds(s);
     } else setSelectedVideoIds(new Set([id]));
   };
   const handleAudioFormatClick = (id) => {
     if (multiAudio) {
       const s = new Set(selectedAudioIds);
-      s.has(id) ? s.delete(id) : s.add(id);
+      if (s.has(id)) s.delete(id);
+      else s.add(id);
       setSelectedAudioIds(s);
     } else setSelectedAudioIds(new Set([id]));
   };
@@ -296,7 +269,6 @@ export default function ConfigSection({ info, onClose, onDownloadStarted }) {
         advancedSettings,
       });
       onDownloadStarted?.();
-      onClose?.();
     } catch (err) {
       console.error('Download failed to start:', err);
       alert('Failed to start download: ' + (err.message || err));

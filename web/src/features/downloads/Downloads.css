@@ -1,0 +1,74 @@
+@reference "../../index.css";
+
+@layer components {
+  .downloads-container {
+    @apply w-2/3 mx-auto mt-12;
+  }
+  .downloads-header {
+    @apply flex justify-between items-center mb-4;
+  }
+  .downloads-title {
+    @apply text-2xl font-bold;
+  }
+  .btn-clear-completed {
+    @apply px-4 py-2 text-sm rounded-full bg-red-500/10 text-red-500 dark:bg-red-500/20 dark:text-red-400 hover:bg-red-500/20 dark:hover:bg-red-500/40 transition-colors hidden;
+  }
+  .downloads-list {
+    @apply space-y-4;
+  }
+  .dl-card {
+    @apply p-4 flex flex-col items-center space-x-4 transition-all duration-500;
+  }
+  .dl-card-inner {
+    @apply flex items-start w-full;
+  }
+  .dl-thumb-fallback {
+    @apply w-48 h-27 bg-gray-700 rounded-md flex-shrink-0 flex items-center justify-center text-xs text-white;
+  }
+  .dl-content {
+    @apply flex-grow overflow-hidden ml-6 text-left;
+  }
+  .dl-title-row {
+    @apply flex items-center justify-between mb-2;
+  }
+  .dl-title-wrapper {
+    @apply flex-grow;
+  }
+  .dl-title {
+    @apply font-semibold leading-tight truncate;
+  }
+  .dl-status {
+    @apply text-sm text-gray-400 truncate mt-0.5;
+  }
+  .dl-actions {
+    @apply flex items-center rounded-full border border-[var(--border-light)] dark:border-[var(--border-dark)] bg-transparent px-3 py-1.5 shrink-0 space-x-2;
+  }
+  .dl-action-btn {
+    @apply p-1.5 hover:bg-black/10 dark:hover:bg-white/10 rounded-full;
+  }
+  .dl-progress-wrapper {
+    @apply mt-4 w-full;
+  }
+  .dl-progress-bar-container {
+    @apply relative w-full bg-gray-700 rounded-full h-3;
+  }
+  .dl-progress-bar-base {
+    @apply h-3 rounded-full transition-all duration-300;
+  }
+  .dl-progress-stats {
+    @apply flex items-center justify-between text-xs text-gray-400 mt-1.5;
+  }
+  .dl-progress-mono {
+    @apply font-mono;
+  }
+  .dl-progress-group {
+    @apply flex items-center space-x-3 font-mono;
+  }
+  .dl-log-container {
+    @apply w-full bg-black/50 dark:bg-black/80 p-2 rounded-md mt-4 max-h-48 overflow-y-auto;
+  }
+  .dl-log-content {
+    @apply text-xs font-mono text-left whitespace-pre-wrap;
+  }
+  
+}

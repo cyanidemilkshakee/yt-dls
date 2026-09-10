@@ -1,5 +1,5 @@
 import './PlaylistSection.css';
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 
 export default function PlaylistSection({ info, onClose, onConfigureSelected }) {
   const [selectedIds, setSelectedIds] = useState(new Set(info?.entries?.map(e => e.id) || []));

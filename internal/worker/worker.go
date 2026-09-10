@@ -68,8 +68,13 @@ func (w *Worker) Run(ctx context.Context) {
 		return
 	}
 
-	timeoutCtx, cancel := context.WithTimeout(dp.Context(), time.Duration(w.Cfg.MaxDownloadDurationMs)*time.Millisecond)
+	// The process must stop when either the pool shuts down or the user cancels
+	// this download. Use the pool context as the parent and bridge the per-job
+	// cancellation into it.
+	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(w.Cfg.MaxDownloadDurationMs)*time.Millisecond)
+	stopDownloadCancel := context.AfterFunc(dp.Context(), cancel)
 	defer cancel()
+	defer stopDownloadCancel()
 
 	cmd := exec.CommandContext(timeoutCtx, res.Command[0], res.Command[1:]...)
 	cmd.Dir = res.DownloadDirectory
