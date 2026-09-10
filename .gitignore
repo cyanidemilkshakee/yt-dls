@@ -11,7 +11,7 @@ yt-dls.exe
 logs/
 *.log
 *.log.gz
-downloads/
+/downloads/
 
 # Environment
 .env
