@@ -8,6 +8,7 @@ package config
 
 import (
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -22,8 +23,9 @@ type Config struct {
 	DownloadDir string // resolved download destination
 
 	// ── yt-dlp ─────────────────────────────────────────────────────────────
-	YtDlpPath      string // path or name of the yt-dlp executable
-	YtDlpJSRuntime string // optional custom JS runtime (e.g. node, deno)
+	YtDlpPath      string   // path or name of the yt-dlp executable
+	YtDlpArgs      []string // optional launcher arguments, e.g. -m yt_dlp
+	YtDlpJSRuntime string   // optional custom JS runtime (e.g. node, deno)
 
 	// ── HTTP server ─────────────────────────────────────────────────────────
 	Port int
@@ -53,10 +55,17 @@ func Load() *Config {
 	// Silently ignore a missing .env — environment-only deployments still work.
 	_ = godotenv.Load(filepath.Join(root, ".env"))
 
+	ytDlpPath, ytDlpArgs := resolveYtDlpCommand(root)
+	if configured := strEnv("YTDLP_PATH", ""); configured != "" {
+		ytDlpPath = configured
+		ytDlpArgs = nil
+	}
+
 	cfg := &Config{
 		RootDir: root,
 
-		YtDlpPath:      strEnv("YTDLP_PATH", "yt-dlp"),
+		YtDlpPath:      ytDlpPath,
+		YtDlpArgs:      ytDlpArgs,
 		YtDlpJSRuntime: strEnv("YTDLP_JS_RUNTIME", ""),
 		Host:           strEnv("HOST", "127.0.0.1"),
 		LogLevel:       strEnv("LOG_LEVEL", "info"),
@@ -81,6 +90,30 @@ func Load() *Config {
 	}
 
 	return cfg
+}
+
+// resolveYtDlpCommand finds a usable yt-dlp command for local development.
+// Prefer an installed Python module when available because a PyInstaller
+// executable can be blocked by Windows extraction policies. Fall back to a
+// standalone executable beside the server, then to PATH for normal installs.
+func resolveYtDlpCommand(root string) (string, []string) {
+	for _, name := range []string{"py", "python", "python3"} {
+		path, err := osexec.LookPath(name)
+		if err != nil {
+			continue
+		}
+		if err := osexec.Command(path, "-m", "yt_dlp", "--version").Run(); err == nil {
+			return path, []string{"-m", "yt_dlp"}
+		}
+	}
+
+	for _, name := range []string{"yt-dlp.exe", "yt-dlp"} {
+		candidate := filepath.Join(root, name)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate, nil
+		}
+	}
+	return "yt-dlp", nil
 }
 
 // ─── internal helpers ────────────────────────────────────────────────────────

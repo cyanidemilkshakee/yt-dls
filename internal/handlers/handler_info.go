@@ -81,7 +81,9 @@ func (a *App) HandleInfo(w http.ResponseWriter, r *http.Request) {
 
 	args = append(args, validURL)
 
-	cmd := exec.CommandContext(ctx, a.Cfg.YtDlpPath, args...)
+	commandArgs := append([]string{}, a.Cfg.YtDlpArgs...)
+	commandArgs = append(commandArgs, args...)
+	cmd := exec.CommandContext(ctx, a.Cfg.YtDlpPath, commandArgs...)
 	// Hide console window on Windows
 	setSysProcAttr(cmd)
 
@@ -101,6 +103,8 @@ func (a *App) HandleInfo(w http.ResponseWriter, r *http.Request) {
 		if exitErr, ok := cmdErr.(*exec.ExitError); ok {
 			stderr = strings.ToLower(strings.TrimSpace(string(exitErr.Stderr)))
 		}
+
+		fmt.Printf("yt-dlp failed! Error: %v\nStderr: %s\n", cmdErr, stderr)
 
 		status := http.StatusBadGateway
 		code := "PROCESSING_ERROR"
@@ -149,7 +153,7 @@ func processPlaylist(info map[string]any, originalURL string) map[string]any {
 		if !ok {
 			continue
 		}
-		
+
 		extractor, _ := entry["ie_key"].(string)
 		if extractor == "" {
 			extractor, _ = entry["extractor_key"].(string)
@@ -163,7 +167,7 @@ func processPlaylist(info map[string]any, originalURL string) map[string]any {
 				url = altURL
 			}
 		}
-		
+
 		id, _ := entry["id"].(string)
 		if url == "" && id != "" && strings.Contains(extractor, "youtube") {
 			url = "https://www.youtube.com/watch?v=" + id
@@ -178,7 +182,7 @@ func processPlaylist(info map[string]any, originalURL string) map[string]any {
 		if id == "" {
 			id = fmt.Sprintf("entry_%d", i)
 		}
-		
+
 		title, _ := entry["title"].(string)
 		if title == "" {
 			title = "Untitled Video"
@@ -197,7 +201,7 @@ func processPlaylist(info map[string]any, originalURL string) map[string]any {
 		if uploader == "" {
 			uploader, _ = entry["channel"].(string)
 		}
-		
+
 		var duration any = entry["duration"]
 		var viewCount any = entry["view_count"]
 
@@ -239,7 +243,7 @@ func processPlaylist(info map[string]any, originalURL string) map[string]any {
 
 func processInfoDict(info map[string]any) map[string]any {
 	var combinedFormats, videoFormats, audioFormats []map[string]any
-	
+
 	durationF, _ := info["duration"].(float64)
 
 	formats, _ := info["formats"].([]any)
@@ -266,9 +270,15 @@ func processInfoDict(info map[string]any) map[string]any {
 			isApprox = true
 		} else if durationF > 0 {
 			var br float64
-			if v, ok := fmtMap["vbr"].(float64); ok { br = v }
-			if v, ok := fmtMap["abr"].(float64); ok && v > br { br = v }
-			if v, ok := fmtMap["tbr"].(float64); ok && v > br { br = v }
+			if v, ok := fmtMap["vbr"].(float64); ok {
+				br = v
+			}
+			if v, ok := fmtMap["abr"].(float64); ok && v > br {
+				br = v
+			}
+			if v, ok := fmtMap["tbr"].(float64); ok && v > br {
+				br = v
+			}
 			if br > 0 {
 				filesize = math.Floor((br * 1000 / 8) * durationF)
 				isApprox = true
@@ -278,8 +288,12 @@ func processInfoDict(info map[string]any) map[string]any {
 		acodec, _ := fmtMap["acodec"].(string)
 		vc := strings.Split(vcodec, ".")[0]
 		ac := strings.Split(acodec, ".")[0]
-		if vc == "" { vc = "N/A" }
-		if ac == "" { ac = "N/A" }
+		if vc == "" {
+			vc = "N/A"
+		}
+		if ac == "" {
+			ac = "N/A"
+		}
 
 		hasVideo := vcodec != "" && vcodec != "none"
 		hasAudio := acodec != "" && acodec != "none"
@@ -332,15 +346,19 @@ func processInfoDict(info map[string]any) map[string]any {
 	allVideoFormats := make([]map[string]any, 0, len(combinedFormats)+len(videoFormats))
 	allVideoFormats = append(allVideoFormats, combinedFormats...)
 	allVideoFormats = append(allVideoFormats, videoFormats...)
-	
+
 	// Sort videos by height desc, vbr desc, fps desc
 	sort.SliceStable(allVideoFormats, func(i, j int) bool {
 		hi, _ := allVideoFormats[i]["height"].(float64)
 		hj, _ := allVideoFormats[j]["height"].(float64)
-		if hi != hj { return hi > hj }
+		if hi != hj {
+			return hi > hj
+		}
 		vi, _ := allVideoFormats[i]["vbr"].(float64)
 		vj, _ := allVideoFormats[j]["vbr"].(float64)
-		if vi != vj { return vi > vj }
+		if vi != vj {
+			return vi > vj
+		}
 		fi, _ := allVideoFormats[i]["fps"].(float64)
 		fj, _ := allVideoFormats[j]["fps"].(float64)
 		return fi > fj
@@ -390,11 +408,15 @@ func processInfoDict(info map[string]any) map[string]any {
 		list, _ := slist.([]any)
 		for _, subAny := range list {
 			sub, ok := subAny.(map[string]any)
-			if !ok { continue }
+			if !ok {
+				continue
+			}
 			ext, _ := sub["ext"].(string)
 			if ext == "vtt" || ext == "srt" || ext == "ass" {
 				name, _ := sub["name"].(string)
-				if name == "" { name = lang }
+				if name == "" {
+					name = lang
+				}
 				subtitles = append(subtitles, map[string]any{
 					"lang": lang, "name": name, "ext": ext, "auto": false,
 				})
@@ -404,15 +426,21 @@ func processInfoDict(info map[string]any) map[string]any {
 
 	autoSubs, _ := info["automatic_captions"].(map[string]any)
 	for lang, slist := range autoSubs {
-		if subtitleLangs[lang] { continue } // skip auto if manual exists
+		if subtitleLangs[lang] {
+			continue
+		} // skip auto if manual exists
 		list, _ := slist.([]any)
 		for _, subAny := range list {
 			sub, ok := subAny.(map[string]any)
-			if !ok { continue }
+			if !ok {
+				continue
+			}
 			ext, _ := sub["ext"].(string)
 			if ext == "vtt" || ext == "srt" || ext == "ass" {
 				name, _ := sub["name"].(string)
-				if name == "" { name = lang }
+				if name == "" {
+					name = lang
+				}
 				subtitles = append(subtitles, map[string]any{
 					"lang": lang, "name": name + " (auto)", "ext": ext, "auto": true,
 				})
@@ -425,7 +453,7 @@ func processInfoDict(info map[string]any) map[string]any {
 		langsList = append(langsList, l)
 	}
 	sort.Strings(langsList)
-	
+
 	// Subtitles must not be null in JSON (frontend expects array)
 	if subtitles == nil {
 		subtitles = make([]map[string]any, 0)
@@ -434,10 +462,14 @@ func processInfoDict(info map[string]any) map[string]any {
 	// Make summary string
 	desc, _ := info["description"].(string)
 	up, _ := info["uploader"].(string)
-	if up == "" { up = "Unknown" }
-	
+	if up == "" {
+		up = "Unknown"
+	}
+
 	var summaryParts []string
-	if up != "Unknown" { summaryParts = append(summaryParts, "Uploaded by: "+up) }
+	if up != "Unknown" {
+		summaryParts = append(summaryParts, "Uploaded by: "+up)
+	}
 	if durationF > 0 {
 		d := int(durationF)
 		h := d / 3600
@@ -456,14 +488,16 @@ func processInfoDict(info map[string]any) map[string]any {
 		}
 		summaryParts = append(summaryParts, cleanDesc)
 	}
-	
+
 	summary := "No additional information available."
 	if len(summaryParts) > 0 {
 		summary = strings.Join(summaryParts, " | ")
 	}
 
 	title, _ := info["title"].(string)
-	if title == "" { title = "video" }
+	if title == "" {
+		title = "video"
+	}
 	suggestedFilename := fmt.Sprintf("%s.%%(ext)s", sanitizeFilename(title))
 
 	return map[string]any{

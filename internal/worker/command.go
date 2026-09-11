@@ -137,7 +137,9 @@ type BuildResult struct {
 // Mirrors buildYtDlpCommand() in commandBuilder.js exactly.
 func BuildCommand(opts DownloadOptions, downloadDirectory string, cfg *config.Config) (BuildResult, error) {
 	b := &builder{cfg: cfg}
-	b.add(cfg.YtDlpPath, "--newline", "--progress-template", ProgressTemplate)
+	command := append([]string{cfg.YtDlpPath}, cfg.YtDlpArgs...)
+	command = append(command, "--newline", "--progress-template", ProgressTemplate)
+	b.add(command...)
 	if cfg.YtDlpJSRuntime != "" {
 		b.add("--js-runtimes", cfg.YtDlpJSRuntime)
 	}
