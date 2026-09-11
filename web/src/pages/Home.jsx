@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { fetchVideoInfo } from '../services/api';
+import { fetchVideoInfo, startDownload } from '../services/api';
 import ConfigSection from '../features/config/ConfigSection';
 import PlaylistSection from '../features/playlist/PlaylistSection';
 import DownloadsSection from '../features/downloads/DownloadsSection';
@@ -147,16 +147,27 @@ export default function Home() {
               <PlaylistSection 
                 info={videoInfo}
                 onClose={() => setView('input')}
-                onConfigureSelected={(selected) => {
-                  import('canvas-confetti').then((confetti) => {
-                    confetti.default({
-                      particleCount: 200,
-                      spread: 90,
-                      origin: { y: 0.6 }
+                onConfigureSelected={async (selected) => {
+                  const results = await Promise.allSettled(selected.map((entry) => startDownload({
+                    url: entry.url,
+                    formatCode: 'bestvideo+bestaudio/best',
+                    filename: '%(title)s',
+                    outputFormat: 'default'
+                  })));
+                  const failed = results.filter((result) => result.status === 'rejected').length;
+                  if (failed > 0) {
+                    alert(`${failed} playlist item${failed === 1 ? '' : 's'} could not be queued.`);
+                  }
+                  if (results.some((result) => result.status === 'fulfilled')) {
+                    import('canvas-confetti').then((confetti) => {
+                      confetti.default({
+                        particleCount: 200,
+                        spread: 90,
+                        origin: { y: 0.6 }
+                      });
                     });
-                  });
-                  alert(`Selected ${selected.length} items to download`);
-                  setView('downloads');
+                    setView('downloads');
+                  }
                 }}
               />
             </motion.div>

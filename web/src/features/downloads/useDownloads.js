@@ -13,7 +13,7 @@ export function useDownloads() {
         ? data
         : Array.isArray(data?.downloads)
           ? data.downloads
-          : [];
+          : Object.entries(data || {}).map(([id, info]) => ({ id, ...info }));
       const list = rawDownloads
         .filter(Boolean)
         .map(download => ({

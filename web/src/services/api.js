@@ -84,7 +84,7 @@ export function startDownload(options) {
 }
 
 export function previewCommand(options) {
-  return apiRequest('/command-preview', {
+  return apiRequest('/download/command-preview', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(options),
@@ -126,7 +126,7 @@ export function getAllDownloads() {
 
 export async function batchStatus(ids) {
   if (!ids?.length) return new Map();
-  const uniqueIds = [...new Set(ids)].slice(0, 100);
+  const uniqueIds = [...new Set(ids)].slice(0, 50);
   const query = uniqueIds.map(encodeURIComponent).join(',');
   const result = await apiRequest(`/downloads/status/batch?ids=${query}`);
   return new Map(Object.entries(result));
