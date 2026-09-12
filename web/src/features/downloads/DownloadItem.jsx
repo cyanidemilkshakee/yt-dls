@@ -1,11 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { pauseResumeDownload, cancelDownload, removeDownload } from '../../services/api';
+import { pauseResumeDownload, cancelDownload, removeDownload, getDownloadLog } from '../../services/api';
 
 export default function DownloadItem({ download, onRefetch }) {
   const [showLog, setShowLog] = useState(false);
+  const [logLines, setLogLines] = useState([]);
+  const [logLoading, setLogLoading] = useState(false);
+  const [thumbnailFailed, setThumbnailFailed] = useState(false);
 
-  const { id, filename, status, progress, url, error, downloaded_bytes, total_bytes, speed, eta } = download;
+  const { id, filename, status, progress, url, thumbnail, error, downloaded_bytes, total_bytes, speed, eta } = download;
   const isPaused = status === 'paused';
   const isCompleted = status === 'completed';
   const isTerminal = isCompleted || status === 'failed' || status === 'cancelled';
@@ -13,7 +16,7 @@ export default function DownloadItem({ download, onRefetch }) {
   const percentage = Number.isFinite(Number(progress)) ? Math.round(Number(progress)) : 0;
 
   const formatBytes = (value) => {
-    if (!Number.isFinite(Number(value)) || Number(value) <= 0) return 'Unknown';
+    if (!Number.isFinite(Number(value)) || Number(value) <= 0) return '—';
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
     let amount = Number(value);
     let unit = 0;
@@ -25,7 +28,34 @@ export default function DownloadItem({ download, onRefetch }) {
   };
 
   const formatSpeed = (value) => Number(value) > 0 ? `${formatBytes(value)}/s` : '—';
-  const formatEta = (value) => Number(value) >= 0 ? `${Math.floor(Number(value) / 60)}:${String(Math.floor(Number(value) % 60)).padStart(2, '0')}` : '—';
+  const formatEta = (value) => {
+    if (value === null || value === undefined || !Number.isFinite(Number(value)) || Number(value) < 0) return '—';
+    return `${Math.floor(Number(value) / 60)}:${String(Math.floor(Number(value) % 60)).padStart(2, '0')}`;
+  };
+
+  useEffect(() => {
+    if (!showLog) return undefined;
+    let active = true;
+    const fetchLog = () => {
+      setLogLoading(true);
+      getDownloadLog(id)
+        .then(data => {
+          if (active) setLogLines(Array.isArray(data?.log) ? data.log : []);
+        })
+        .catch(() => {
+          if (active) setLogLines([]);
+        })
+        .finally(() => {
+          if (active) setLogLoading(false);
+        });
+    };
+    fetchLog();
+    const interval = setInterval(fetchLog, 1000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [id, showLog]);
 
   const handlePauseResume = async () => {
     await pauseResumeDownload(id, isPaused ? 'resume' : 'pause');
@@ -52,10 +82,17 @@ export default function DownloadItem({ download, onRefetch }) {
       className="dl-card card"
     >
       <div className="dl-card-inner">
-        {/* We would use the actual thumbnail if available, or a fallback */}
-        <div className="dl-thumb-fallback">
-          Thumb
-        </div>
+        {thumbnail && !thumbnailFailed ? (
+          <img
+            className="dl-thumb"
+            src={thumbnail}
+            alt="Video thumbnail"
+            loading="lazy"
+            onError={() => setThumbnailFailed(true)}
+          />
+        ) : (
+          <div className="dl-thumb-fallback" aria-label="Thumbnail unavailable">Thumbnail unavailable</div>
+        )}
         
         <div className="dl-content">
           <div className="dl-title-row">
@@ -98,7 +135,7 @@ export default function DownloadItem({ download, onRefetch }) {
           <div className="dl-progress-wrapper">
             <div className="dl-progress-bar-container">
               <div 
-                className={`dl-progress-bar-base ${isError ? 'bg-red-400' : 'bg-green-400'}`} 
+                className={`dl-progress-bar-base ${isError ? 'bg-slate-400 dark:bg-slate-500' : 'bg-[var(--primary-green)]'}`}
                 style={{ width: `${percentage}%`, boxShadow: isError ? 'none' : '0 0 8px rgba(0, 255, 153, 0.6)' }}
               />
             </div>
@@ -124,8 +161,11 @@ export default function DownloadItem({ download, onRefetch }) {
           >
             <div className="dl-log-container">
               <pre className="dl-log-pre">
-                {/* Normally we would map over log events */}
-                {error || 'Starting download...\nDownloading...\nDone.'}
+                {logLoading
+                  ? 'Loading download log…'
+                  : logLines.length > 0
+                    ? logLines.join('\n')
+                    : error || 'No log output yet.'}
               </pre>
             </div>
           </motion.div>

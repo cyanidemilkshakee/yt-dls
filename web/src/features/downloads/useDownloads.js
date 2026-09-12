@@ -4,6 +4,7 @@ import { getAllDownloads, batchStatus } from '../../services/api';
 export function useDownloads() {
   const [downloads, setDownloads] = useState([]);
   const [downloadIds, setDownloadIds] = useState([]);
+  const isTerminal = (status) => ['completed', 'failed', 'cancelled'].includes(status);
 
   // Fetch full download list initially
   const fetchDownloads = useCallback(async () => {
@@ -22,7 +23,7 @@ export function useDownloads() {
         }))
         .filter(download => download.id);
       setDownloads(list);
-      setDownloadIds(list.map(d => d.id));
+      setDownloadIds(list.filter(d => !isTerminal(d.status)).map(d => d.id));
     } catch (err) {
       console.error('Failed to fetch downloads:', err);
     }
@@ -44,6 +45,10 @@ export function useDownloads() {
             return { ...dl, ...statuses.get(dl.id) };
           }
           return dl;
+        }));
+        setDownloadIds(prev => prev.filter(id => {
+          const snapshot = statuses.get(id);
+          return !snapshot || !isTerminal(snapshot.status);
         }));
       } catch (err) {
         console.error('Failed to update download statuses:', err);

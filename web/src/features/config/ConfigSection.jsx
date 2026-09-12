@@ -49,14 +49,14 @@ function VideoTags({ format }) {
   const text = `${format.id || ''} ${format.format_note || ''} ${format.format || ''}`.toLowerCase();
   const tags = [];
   if (/hdr|hdr10|rec2020|bt2020|hlg|pq|dolby.?vision|dv/i.test(text))
-    tags.push(<span key="hdr" className="cfg-tag" style={{ background: '#7c3aed22', color: '#a78bfa' }}>HDR</span>);
+    tags.push(<span key="hdr" className="cfg-tag cfg-tag-accent">HDR</span>);
   if (/drc/i.test(format.id || ''))
-    tags.push(<span key="drc" className="cfg-tag" style={{ background: '#92400e22', color: '#fbbf24' }}>DRC</span>);
+    tags.push(<span key="drc" className="cfg-tag cfg-tag-muted">DRC</span>);
   if (/premium|high.?quality|hq/i.test(text))
-    tags.push(<span key="hq" className="cfg-tag" style={{ background: '#05966922', color: '#34d399' }}>HQ</span>);
+    tags.push(<span key="hq" className="cfg-tag cfg-tag-accent">HQ</span>);
   const fpsMatch = text.match(/(\d+)fps/i);
   if (fpsMatch && parseInt(fpsMatch[1]) >= 48)
-    tags.push(<span key="fps" className="cfg-tag" style={{ background: '#1d4ed822', color: '#60a5fa' }}>{fpsMatch[1]}fps</span>);
+    tags.push(<span key="fps" className="cfg-tag cfg-tag-muted">{fpsMatch[1]}fps</span>);
   return tags.length ? <>{tags}</> : null;
 }
 
@@ -64,11 +64,11 @@ function AudioTags({ format }) {
   const text = `${format.id || ''} ${format.format_note || ''} ${format.format || ''}`.toLowerCase();
   const tags = [];
   if (/drc/i.test(format.id || ''))
-    tags.push(<span key="drc" className="cfg-tag" style={{ background: '#92400e22', color: '#fbbf24' }}>DRC</span>);
+    tags.push(<span key="drc" className="cfg-tag cfg-tag-muted">DRC</span>);
   if (/premium|high.?quality|hq|lossless/i.test(text))
-    tags.push(<span key="hq" className="cfg-tag" style={{ background: '#05966922', color: '#34d399' }}>HQ</span>);
+    tags.push(<span key="hq" className="cfg-tag cfg-tag-accent">HQ</span>);
   if (/spatial|surround|5\.1|7\.1|atmos/i.test(text))
-    tags.push(<span key="spatial" className="cfg-tag" style={{ background: '#7c3aed22', color: '#a78bfa' }}>Spatial</span>);
+    tags.push(<span key="spatial" className="cfg-tag cfg-tag-accent">Spatial</span>);
   return tags.length ? <>{tags}</> : null;
 }
 
@@ -102,7 +102,9 @@ export default function ConfigSection({ info, onClose, onDownloadStarted }) {
   // Subtitles
   const [subtitleLang,   setSubtitleLang]   = useState('none');
   const [subtitleFormat, setSubtitleFormat] = useState('best');
+  const [subtitlesEnabled, setSubtitlesEnabled] = useState(false);
   const [embedSubs,      setEmbedSubs]      = useState(false);
+  const [commandDraft, setCommandDraft] = useState(null);
 
   // Post-processing
   const [extractAudio,      setExtractAudio]      = useState(false);
@@ -136,6 +138,16 @@ export default function ConfigSection({ info, onClose, onDownloadStarted }) {
   const [fixupPolicy,    setFixupPolicy]    = useState('detect_or_warn');
 
   if (!info) return null;
+
+  const subtitleLanguages = Array.from(new Set([
+    ...(info.subtitle_languages || []),
+    ...(info.subtitles || []).map(subtitle => subtitle.lang),
+  ].filter(Boolean))).sort();
+  const subtitleFormats = Array.from(new Set([
+    ...(info.subtitles || []).map(subtitle => subtitle.ext),
+    'best',
+  ].filter(format => ['best', 'srt', 'vtt', 'ass'].includes(format))));
+  const hasSubtitles = subtitleLanguages.length > 0;
 
   /* ── format click ─────────────────────────────────────────────────────── */
   const handleVideoFormatClick = (id) => {
@@ -209,7 +221,7 @@ export default function ConfigSection({ info, onClose, onDownloadStarted }) {
     if (outputFormat && outputFormat !== 'default') cmd += ` --merge-output-format ${outputFormat}`;
     cmd += ` -o "${filenameBase || '%(title)s'}.%(ext)s"`;
     if (downloadPath) cmd += ` -P "${downloadPath}"`;
-    if (openSubs && subtitleLang !== 'none') {
+    if (subtitlesEnabled && subtitleLang !== 'none') {
       cmd += ' --write-subs --write-auto-subs';
       if (subtitleLang !== 'all') cmd += ` --sub-langs ${subtitleLang}`;
       if (subtitleFormat !== 'best') cmd += ` --sub-format ${subtitleFormat}`;
@@ -241,6 +253,7 @@ export default function ConfigSection({ info, onClose, onDownloadStarted }) {
     cmd += ` "${info.original_url}"`;
     return cmd;
   };
+  const generatedCommand = generateCommand();
 
   /* ── download ─────────────────────────────────────────────────────────── */
   const handleDownload = async () => {
@@ -252,10 +265,11 @@ export default function ConfigSection({ info, onClose, onDownloadStarted }) {
 
       await startDownload({
         url: info.original_url,
+        thumbnail: info.thumbnail,
         formatCode: downloadMode === 'both' ? `${vid}+${aud}/best`
                   : downloadMode === 'video' ? vid : aud,
         filename: filenameBase, outputFormat, downloadPath,
-        enableSubtitles: openSubs, subtitleLang, subtitleFormat, embedSubs,
+        enableSubtitles: subtitlesEnabled, subtitleLang, subtitleFormat, embedSubs,
         enablePostprocessing: openPost, extractAudio, audioFormat, audioQuality,
         remuxVideo: remuxCheck ? remuxFormat : null,
         recodeVideo: recodeCheck ? recodeFormat : null,
@@ -280,7 +294,6 @@ export default function ConfigSection({ info, onClose, onDownloadStarted }) {
     <select
       value={value} onChange={onChange} disabled={disabled}
       className={`cfg-inline-select ${className}`}
-      style={{ background: 'var(--input-bg-light)', color: 'var(--text-light)' }}
     >
       {children}
     </select>
@@ -528,26 +541,35 @@ export default function ConfigSection({ info, onClose, onDownloadStarted }) {
 
         {/* Subtitles */}
         <Accordion title="Subtitles" open={openSubs} onToggle={() => setOpenSubs(o => !o)}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          <div className="cfg-subtitle-grid">
             <div>
               <p className="cfg-field-label">Language</p>
-              <Select value={subtitleLang} onChange={e => setSubtitleLang(e.target.value)}>
+              <Select
+                value={subtitleLang}
+                disabled={!hasSubtitles}
+                onChange={e => {
+                  const value = e.target.value;
+                  setSubtitleLang(value);
+                  setSubtitlesEnabled(value !== 'none');
+                }}
+              >
                 <option value="none">No Subtitles</option>
-                <option value="all">All Languages</option>
-                {info.subtitle_languages?.map(l => <option key={l} value={l}>{l}</option>)}
+                {subtitleLanguages.length > 1 && <option value="all">All Languages</option>}
+                {subtitleLanguages.map(l => <option key={l} value={l}>{l}</option>)}
               </Select>
             </div>
             <div>
               <p className="cfg-field-label">Format</p>
-              <Select value={subtitleFormat} onChange={e => setSubtitleFormat(e.target.value)}>
-                <option value="best">Best</option>
-                <option value="srt">SRT</option>
-                <option value="vtt">VTT</option>
-                <option value="ass">ASS</option>
+              <Select value={subtitleFormat} disabled={!hasSubtitles} onChange={e => setSubtitleFormat(e.target.value)}>
+                {subtitleFormats.map(format => <option key={format} value={format}>{format.toUpperCase()}</option>)}
               </Select>
             </div>
           </div>
-          <Checkbox checked={embedSubs} onChange={e => setEmbedSubs(e.target.checked)}>Embed subtitles into file</Checkbox>
+          {hasSubtitles ? (
+            <Checkbox checked={embedSubs} onChange={e => setEmbedSubs(e.target.checked)} disabled={!subtitlesEnabled}>Embed subtitles into file</Checkbox>
+          ) : (
+            <p className="cfg-empty-state">No subtitles are available for this video.</p>
+          )}
           {info.subtitles?.length > 0 && (
             <div className="cfg-table-panel">
               <div className="cfg-table-scroll" style={{ maxHeight: '140px' }}>
@@ -682,8 +704,18 @@ export default function ConfigSection({ info, onClose, onDownloadStarted }) {
 
         {/* ── Command preview ── */}
         <div>
-          <p className="cfg-field-label" style={{ marginBottom: '0.4rem' }}>Generated Command</p>
-          <textarea className="cfg-command-box" readOnly value={generateCommand()} />
+          <div className="cfg-command-heading">
+            <p className="cfg-field-label">Generated Command</p>
+            {commandDraft !== null && (
+              <button type="button" className="cfg-command-reset" onClick={() => setCommandDraft(null)}>Reset generated</button>
+            )}
+          </div>
+          <textarea
+            className="cfg-command-box"
+            value={commandDraft ?? generatedCommand}
+            onChange={e => setCommandDraft(e.target.value)}
+            aria-label="Generated command"
+          />
         </div>
 
       </div>{/* /cfg-body */}

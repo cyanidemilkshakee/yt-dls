@@ -1,8 +1,11 @@
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useState } from 'react';
 
 export default function Sidebar({ collapsed, onToggle }) {
   const location = useLocation();
+  const [hovered, setHovered] = useState(false);
+  const expanded = hovered || !collapsed;
 
   const textVariants = {
     hidden: { opacity: 0, width: 0, marginLeft: 0, display: "none" },
@@ -15,7 +18,7 @@ export default function Sidebar({ collapsed, onToggle }) {
       <Link to={to} className={`sidebar-link ${isActive ? 'active' : ''} ${to === '/' ? 'mb-4' : ''}`}>
         {icon}
         <AnimatePresence initial={false}>
-          {!collapsed && (
+          {expanded && (
             <motion.span
               variants={textVariants}
               initial="hidden"
@@ -34,12 +37,13 @@ export default function Sidebar({ collapsed, onToggle }) {
 
   return (
     <motion.nav 
-      layout
       initial={false}
-      animate={{ width: collapsed ? '5rem' : '16rem' }}
+      animate={{ width: expanded ? '16rem' : '4.5rem' }}
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
       id="sidebar" 
-      className={`sidebar card ${collapsed ? 'collapsed' : ''}`}
+      className={`sidebar card ${expanded ? 'expanded' : 'collapsed'}`}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{ overflowX: 'hidden' }}
     >
       <div>
@@ -75,7 +79,7 @@ export default function Sidebar({ collapsed, onToggle }) {
       
       <button id="sidebar-collapse-btn" className="btn p-0" onClick={onToggle}>
         <motion.svg 
-          animate={{ rotate: collapsed ? 180 : 0 }}
+          animate={{ rotate: expanded ? 0 : 180 }}
           transition={{ duration: 0.3 }}
           xmlns="http://www.w3.org/2000/svg" 
           className="h-4 w-4" 

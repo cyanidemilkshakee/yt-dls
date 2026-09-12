@@ -34,12 +34,10 @@ function App() {
       <BackgroundCanvas />
       <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
       <motion.main 
-        layout
         initial={false}
-        animate={{ marginLeft: sidebarCollapsed ? '6rem' : '16rem' }}
-        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        animate={{ marginLeft: 0 }}
         id="main-content-wrapper" 
-        className="relative flex-grow p-4 sm:p-6 lg:p-8"
+        className="relative flex-grow min-w-0 p-4 sm:p-6 lg:p-8"
       >
         <ThemeToggle />
         <AnimatedRoutes />

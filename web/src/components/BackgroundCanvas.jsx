@@ -3,7 +3,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { Float, Stars } from '@react-three/drei';
 import { useSpring, useMotionValue } from 'framer-motion';
 
-function InteractiveSphere({ isDark }) {
+function InteractiveSphere() {
   const meshRef = useRef();
   const time = useRef(0);
 
@@ -36,7 +36,7 @@ function InteractiveSphere({ isDark }) {
       <mesh ref={meshRef}>
         <icosahedronGeometry args={[4, 2]} />
         <meshBasicMaterial
-          color={isDark ? '#00ff99' : '#0099ff'}
+          color="#35c997"
           wireframe
           transparent
           opacity={0.3}
@@ -47,7 +47,6 @@ function InteractiveSphere({ isDark }) {
 }
 
 export default function BackgroundCanvas() {
-  const [isDark, setIsDark] = useState(false);
   const [lowPerf, setLowPerf] = useState(false);
 
   useEffect(() => {
@@ -56,16 +55,6 @@ export default function BackgroundCanvas() {
       return;
     }
 
-    const checkTheme = () =>
-      setIsDark(document.documentElement.classList.contains('dark'));
-    checkTheme();
-
-    const observer = new MutationObserver(checkTheme);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class'],
-    });
-    return () => observer.disconnect();
   }, []);
 
   if (lowPerf) return null;
@@ -84,9 +73,8 @@ export default function BackgroundCanvas() {
     >
       <Canvas camera={{ position: [0, 0, 8], fov: 75 }} dpr={[1, 1.5]}>
         <Stars radius={100} depth={50} count={2000} factor={4} saturation={0} fade speed={1} />
-        <InteractiveSphere isDark={isDark} />
+        <InteractiveSphere />
       </Canvas>
     </div>
   );
 }
-
