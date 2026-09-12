@@ -17,8 +17,12 @@ import (
 )
 
 // ProgressTemplate is the --progress-template value passed to yt-dlp.
-// It produces one JSON object per line on stdout, which worker.go parses.
-const ProgressTemplate = `download:{"status":%(progress.status)j,"downloaded_bytes":%(progress.downloaded_bytes)j,"total_bytes":%(progress.total_bytes)j,"total_bytes_estimate":%(progress.total_bytes_estimate)j,"speed":%(progress.speed)j,"eta":%(progress.eta)j,"filename":%(progress.filename,info.filepath|)j,"vcodec":%(info.vcodec)j,"acodec":%(info.acodec)j,"format_id":%(info.format_id)j}`
+// It produces one valid JSON object per line on stdout, which worker.go parses.
+// yt-dlp's JSON formatter emits the literal `NA` for unavailable fields unless
+// a fallback is provided; that would make the whole line invalid JSON and
+// silently drop every progress update. Numeric fallbacks therefore use zero,
+// while codec/string fields use values that preserve their meaning.
+const ProgressTemplate = `download:{"status":%(progress.status)j,"downloaded_bytes":%(progress.downloaded_bytes|0)j,"total_bytes":%(progress.total_bytes|0)j,"total_bytes_estimate":%(progress.total_bytes_estimate|0)j,"speed":%(progress.speed|0)j,"eta":%(progress.eta|0)j,"fragment_index":%(progress.fragment_index|0)j,"fragment_count":%(progress.fragment_count|0)j,"filename":%(progress.filename,info.filepath|)j,"vcodec":%(info.vcodec|none)j,"acodec":%(info.acodec|none)j,"format_id":%(info.format_id|)j}`
 
 // Allowed value sets — mirrors the JS constants.
 var (
@@ -88,6 +92,7 @@ type AdvancedSettings struct {
 // POST /api/download and POST /api/command-preview.
 type DownloadOptions struct {
 	URL                  string           `json:"url"`
+	Thumbnail            string           `json:"thumbnail"`
 	FormatCode           string           `json:"formatCode"`
 	Filename             string           `json:"filename"`
 	OutputFormat         string           `json:"outputFormat"`

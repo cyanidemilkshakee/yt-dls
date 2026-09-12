@@ -80,6 +80,7 @@ func TestBuildCommand_minimal(t *testing.T) {
 	// Progress template flags must be present
 	assertContains(t, res.Command, "--newline")
 	assertContains(t, res.Command, "--progress-template")
+	assertConsecutive(t, res.Command, "--progress-template", worker.ProgressTemplate)
 
 	// Default format selector
 	assertConsecutive(t, res.Command, "-f", "bestvideo+bestaudio/best")

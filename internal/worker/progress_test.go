@@ -12,10 +12,10 @@ import (
 
 func TestExpectedStreams(t *testing.T) {
 	tests := []struct {
-		name          string
-		opts          worker.DownloadOptions
-		wantVideo     bool
-		wantAudio     bool
+		name      string
+		opts      worker.DownloadOptions
+		wantVideo bool
+		wantAudio bool
 	}{
 		{"default", worker.DownloadOptions{}, true, true},
 		{"extractAudio flag", worker.DownloadOptions{ExtractAudio: true}, false, true},
@@ -107,6 +107,44 @@ func TestHandleProgress_downloadingFallbackEstimate(t *testing.T) {
 	}
 	if snap.Progress != 20 {
 		t.Errorf("progress = %v, want 20", snap.Progress)
+	}
+}
+
+func TestHandleProgress_ytDlpTemplateFallbacks(t *testing.T) {
+	dp := makeDP(true, false)
+
+	// This mirrors the JSON emitted by ProgressTemplate when yt-dlp has no
+	// estimate or ETA. The template must use 0 fallbacks because raw `NA`
+	// tokens are not valid JSON.
+	worker.HandleProgress(dp, []byte(`{"status":"downloading","downloaded_bytes":512,"total_bytes":1024,"total_bytes_estimate":0,"speed":2048,"eta":0,"filename":"video.mp4","vcodec":"h264","acodec":"none","format_id":"22"}`))
+
+	snap := dp.Snapshot()
+	if snap.Status != "downloading" {
+		t.Errorf("status = %q, want downloading", snap.Status)
+	}
+	if snap.Progress != 50 {
+		t.Errorf("progress = %v, want 50", snap.Progress)
+	}
+	if snap.DownloadedBytes != 512 || snap.TotalBytes != 1024 {
+		t.Errorf("bytes = %d/%d, want 512/1024", snap.DownloadedBytes, snap.TotalBytes)
+	}
+	if snap.ETA != nil {
+		t.Errorf("eta = %v, want nil for zero fallback", snap.ETA)
+	}
+}
+
+func TestHandleProgress_fragmentFallback(t *testing.T) {
+	dp := makeDP(true, false)
+	worker.HandleProgress(dp, jsonProgress(map[string]any{
+		"status":           "downloading",
+		"fragment_index":   float64(4),
+		"fragment_count":   float64(10),
+		"downloaded_bytes": float64(0),
+	}))
+
+	snap := dp.Snapshot()
+	if snap.Progress != 50 {
+		t.Errorf("fragment progress = %v, want 50", snap.Progress)
 	}
 }
 
@@ -202,6 +240,27 @@ func TestHandleProgress_audioOnlyByCodec(t *testing.T) {
 	}
 	if snap.VideoProgress.Status != "waiting" {
 		t.Errorf("video status = %q, want waiting (unchanged)", snap.VideoProgress.Status)
+	}
+}
+
+func TestHandleProgress_unknownMetadataUsesCombinedStreams(t *testing.T) {
+	dp := makeDP(true, true)
+	worker.HandleProgress(dp, jsonProgress(map[string]any{
+		"status":           "downloading",
+		"total_bytes":      float64(1000),
+		"downloaded_bytes": float64(250),
+		"speed":            float64(10),
+	}))
+
+	snap := dp.Snapshot()
+	if snap.Progress != 25 {
+		t.Errorf("aggregate progress = %v, want 25", snap.Progress)
+	}
+	if snap.VideoProgress.Progress != 25 || snap.AudioProgress.Progress != 25 {
+		t.Errorf("stream progress = video %v/audio %v, want 25/25", snap.VideoProgress.Progress, snap.AudioProgress.Progress)
+	}
+	if !snap.VideoProgress.Combined || !snap.AudioProgress.Combined {
+		t.Error("expected both streams to be marked combined")
 	}
 }
 

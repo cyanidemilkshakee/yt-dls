@@ -47,6 +47,8 @@ type YtDlpProgress struct {
 	DownloadedBytes    *float64 `json:"downloaded_bytes"`
 	Speed              *float64 `json:"speed"`
 	ETA                *float64 `json:"eta"`
+	FragmentIndex      *float64 `json:"fragment_index"`
+	FragmentCount      *float64 `json:"fragment_count"`
 	VCodec             *string  `json:"vcodec"`
 	ACodec             *string  `json:"acodec"`
 	Error              *string  `json:"error"`
@@ -61,10 +63,12 @@ func hasCodec(codec *string) bool {
 }
 
 // HandleProgress processes a JSON progress line from yt-dlp and updates the DownloadProgress.
-func HandleProgress(dp *store.DownloadProgress, rawJSON []byte) {
+// It returns false when the line is not valid progress JSON so callers can
+// keep malformed/unrelated output in the human-readable log.
+func HandleProgress(dp *store.DownloadProgress, rawJSON []byte) bool {
 	var d YtDlpProgress
 	if err := json.Unmarshal(rawJSON, &d); err != nil {
-		return
+		return false
 	}
 
 	status := d.Status
@@ -101,6 +105,12 @@ func HandleProgress(dp *store.DownloadProgress, rawJSON []byte) {
 			activeStreams = append(activeStreams, &p.VideoProgress)
 		} else if p.AudioProgress.Expected && !p.VideoProgress.Expected {
 			activeStreams = append(activeStreams, &p.AudioProgress)
+		} else if p.VideoProgress.Expected && p.AudioProgress.Expected {
+			// Some extractors omit codec and filename metadata from the
+			// progress template. When both streams are expected, treat the
+			// update as a combined download instead of assigning it to video
+			// and leaving the aggregate stuck at half progress.
+			activeStreams = append(activeStreams, &p.VideoProgress, &p.AudioProgress)
 		} else if p.VideoProgress.Status == "downloading" {
 			activeStreams = append(activeStreams, &p.VideoProgress)
 		} else if p.AudioProgress.Status == "downloading" {
@@ -149,6 +159,15 @@ func HandleProgress(dp *store.DownloadProgress, rawJSON []byte) {
 			var pct float64
 			if totalBytes > 0 {
 				pct = math.Min((float64(downloadedBytes)/float64(totalBytes))*100, 100)
+			} else {
+				// Fragmented HLS/DASH downloads frequently have no byte total.
+				// yt-dlp still exposes a 0-based fragment index and count, which
+				// gives the UI a useful percentage while bytes remain unknown.
+				fragmentIndex := safeInt(d.FragmentIndex)
+				fragmentCount := safeInt(d.FragmentCount)
+				if fragmentCount > 0 && fragmentIndex >= 0 {
+					pct = math.Min((float64(fragmentIndex+1)/float64(fragmentCount))*100, 100)
+				}
 			}
 
 			for _, stream := range activeStreams {
@@ -202,4 +221,5 @@ func HandleProgress(dp *store.DownloadProgress, rawJSON []byte) {
 			p.AddLogLocked("Download failed: " + errStr)
 		}
 	})
+	return true
 }
