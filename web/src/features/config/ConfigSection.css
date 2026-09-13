@@ -5,8 +5,11 @@
   display: flex;
   flex-direction: column;
   border-radius: 1.25rem;
+  width: 100%;
+  max-width: none;
   max-height: 90vh;
   overflow-y: auto;
+  text-align: left;
 }
 
 /* ─── Sticky header ─────────────────────────────────────────────────────── */
@@ -135,7 +138,7 @@
 .cfg-input:focus {
   outline: none;
   border-color: var(--primary-green);
-  box-shadow: 0 0 0 3px rgba(0,255,153,0.15);
+  box-shadow: 0 0 0 3px rgba(var(--primary-green-rgb), 0.15);
 }
 .dark .cfg-input {
   border-color: var(--border-dark);
@@ -144,15 +147,20 @@
 }
 
 /* ─── Segmented control ──────────────────────────────────────────────────── */
-.seg-group {
+.seg-group,
+.seg-group-fill {
   display: inline-flex;
-  background: rgba(0,0,0,0.05);
+  align-items: stretch;
+  background: rgba(17, 27, 46, 0.08);
+  border: 1px solid rgba(89, 103, 127, 0.24);
   border-radius: 0.6rem;
   padding: 3px;
   gap: 2px;
 }
-.dark .seg-group {
-  background: rgba(255,255,255,0.06);
+.dark .seg-group,
+.dark .seg-group-fill {
+  background: rgba(3, 8, 20, 0.42);
+  border-color: rgba(177, 198, 231, 0.16);
 }
 .seg-btn {
   padding: 0.4rem 1rem;
@@ -163,40 +171,39 @@
   cursor: pointer;
   transition: background 0.18s, color 0.18s, box-shadow 0.18s;
   white-space: nowrap;
-  color: var(--text-secondary-light);
+  color: #405069;
   flex-shrink: 0;
 }
-.dark .seg-btn { color: var(--text-secondary-dark); }
+.dark .seg-btn { color: #c4d0e4; }
 .seg-btn:hover:not(.seg-active):not(.seg-active-green) {
   background: rgba(0,0,0,0.06);
 }
 .dark .seg-btn:hover:not(.seg-active):not(.seg-active-green) {
   background: rgba(255,255,255,0.07);
 }
-.seg-active {
-  background: var(--surface-light);
-  color: var(--text-light);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.06);
-}
-.dark .seg-active {
-  background: rgba(255,255,255,0.1);
-  color: var(--text-dark);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.08);
-}
-/* Green active variant for presets */
+.seg-active,
 .seg-active-green {
   background: var(--primary-green);
-  color: #000;
-  box-shadow: 0 2px 8px rgba(0,255,153,0.3);
+  color: #082016;
+  box-shadow: 0 2px 8px rgba(var(--primary-green-rgb), 0.24);
   font-weight: 600;
+}
+/* Both segmented controls use the same active treatment. The dark selector
+   wins over .dark .seg-btn so active text remains readable. */
+.dark .seg-active,
+.dark .seg-active-green {
+  background: var(--primary-green);
+  color: #082016;
 }
 
 /* ─── Controls row (presets + mode) ─────────────────────────────────────── */
 .cfg-controls-row {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
   gap: 0.75rem;
 }
+.cfg-controls-row > div { min-width: 0; }
 .cfg-control-label {
   font-size: 0.68rem;
   font-weight: 700;
@@ -207,14 +214,7 @@
 }
 .dark .cfg-control-label { color: var(--text-secondary-dark); }
 /* Mode row: 3 equal buttons that fill the row */
-.seg-group-fill {
-  display: flex;
-  background: rgba(0,0,0,0.05);
-  border-radius: 0.6rem;
-  padding: 3px;
-  gap: 2px;
-}
-.dark .seg-group-fill { background: rgba(255,255,255,0.06); }
+.seg-group-fill { display: flex; }
 .seg-group-fill .seg-btn { flex: 1; }
 
 /* ─── Format tables ──────────────────────────────────────────────────────── */
@@ -302,22 +302,19 @@
 .dark .cfg-table tbody tr:not(:last-child) td {
   border-color: rgba(255,255,255,0.05);
 }
-/* selected row */
-.cfg-row-selected td { color: var(--primary-green) !important; background: rgba(0,255,153,0.06); }
-/* best row (bold gradient text) */
-.cfg-row-best td {
-  font-weight: 700;
-  background: linear-gradient(90deg, #4ffa58, #ffd64f, #ff5757);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent !important;
+/* Selection is a row state so it remains readable even for recommended formats. */
+.cfg-row-selected {
+  background: rgba(var(--primary-green-rgb), 0.13) !important;
+  box-shadow: inset 3px 0 0 var(--primary-green);
 }
+.cfg-row-selected td,
 .cfg-row-best.cfg-row-selected td {
-  background: linear-gradient(90deg, #4ffa58, #ffd64f, #ff5757);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent !important;
+  color: var(--text-light) !important;
+  background: transparent !important;
 }
+.dark .cfg-row-selected td,
+.dark .cfg-row-best.cfg-row-selected td { color: var(--text-dark) !important; }
+.cfg-row-best td { font-weight: 700; }
 .cfg-tag {
   display: inline-block;
   font-size: 0.6rem;
@@ -327,6 +324,15 @@
   margin-left: 3px;
   vertical-align: middle;
 }
+.cfg-tag-accent {
+  color: var(--primary-green);
+  background: rgba(var(--primary-green-rgb), 0.14);
+}
+.cfg-tag-muted {
+  color: var(--text-secondary-light);
+  background: rgba(99, 115, 140, 0.14);
+}
+.dark .cfg-tag-muted { color: var(--text-secondary-dark); }
 
 /* ─── Size bar ───────────────────────────────────────────────────────────── */
 .cfg-size-bar {
@@ -335,8 +341,8 @@
   justify-content: space-between;
   padding: 0.75rem 1rem;
   border-radius: 0.75rem;
-  background: rgba(0,255,153,0.06);
-  border: 1px solid rgba(0,255,153,0.18);
+  background: rgba(var(--primary-green-rgb), 0.08);
+  border: 1px solid rgba(var(--primary-green-rgb), 0.2);
 }
 .cfg-size-label { font-size: 0.8rem; font-weight: 600; }
 .cfg-size-value {
@@ -349,7 +355,7 @@
   font-size: 0.72rem;
   color: var(--text-secondary-light);
   margin-top: 0.1rem;
-  text-align: right;
+  text-align: left;
 }
 .dark .cfg-size-breakdown { color: var(--text-secondary-dark); }
 
@@ -382,6 +388,7 @@
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  text-align: left;
 }
 .dark .cfg-accordion-body {
   border-color: var(--border-dark);
@@ -423,7 +430,7 @@
 .tog-label input:checked + .tog-track {
   background: var(--primary-green);
   border-color: var(--primary-green);
-  box-shadow: 0 0 0 3px rgba(0,255,153,0.2);
+  box-shadow: 0 0 0 3px rgba(var(--primary-green-rgb), 0.2);
 }
 .tog-thumb {
   position: absolute;
@@ -463,14 +470,14 @@
   width: 5px; height: 9px;
   border: 2px solid transparent;
   border-top: none; border-left: none;
-  border-right-color: black; border-bottom-color: black;
+  border-right-color: #082016; border-bottom-color: #082016;
   transform: rotate(45deg) scale(0);
   transition: transform 0.15s cubic-bezier(0.4,0,0.2,1);
 }
 .cb-label input[type="checkbox"]:checked + .cb-box {
   background: var(--primary-green);
   border-color: var(--primary-green);
-  box-shadow: 0 0 0 3px rgba(0,255,153,0.15);
+  box-shadow: 0 0 0 3px rgba(var(--primary-green-rgb), 0.15);
 }
 .cb-label input[type="checkbox"]:checked + .cb-box::after { transform: rotate(45deg) scale(1); }
 .cb-label input[type="checkbox"]:focus-visible + .cb-box {
@@ -517,6 +524,18 @@
   gap: 0.6rem;
 }
 
+.cfg-subtitle-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.75rem;
+}
+.cfg-empty-state {
+  margin: 0;
+  color: var(--text-secondary-light);
+  font-size: 0.8rem;
+}
+.dark .cfg-empty-state { color: var(--text-secondary-dark); }
+
 /* ─── Command preview ────────────────────────────────────────────────────── */
 .cfg-command-box {
   width: 100%;
@@ -526,11 +545,18 @@
   background: rgba(0,0,0,0.04);
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 0.72rem;
-  resize: none;
-  color: var(--primary-green);
+  resize: vertical;
+  color: var(--text-light);
   height: 5.5rem;
+  text-align: left;
+  line-height: 1.5;
 }
-.dark .cfg-command-box { border-color: var(--border-dark); background: rgba(0,0,0,0.3); }
+.dark .cfg-command-box { border-color: var(--border-dark); background: rgba(0,0,0,0.3); color: var(--text-dark); }
+.cfg-command-box:focus { outline: none; border-color: var(--primary-green); box-shadow: 0 0 0 3px rgba(var(--primary-green-rgb), 0.12); }
+.cfg-command-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem; }
+.cfg-command-heading .cfg-field-label { margin-bottom: 0; }
+.cfg-command-reset { color: var(--text-secondary-light); font-size: 0.72rem; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.dark .cfg-command-reset { color: var(--text-secondary-dark); }
 
 /* ─── Footer ─────────────────────────────────────────────────────────────── */
 .cfg-footer {
@@ -565,12 +591,24 @@
   font-size: 0.875rem;
   font-weight: 700;
   background: var(--primary-green);
-  color: #000;
+  color: #082016;
   cursor: pointer;
   transition: background 0.18s, box-shadow 0.18s, transform 0.18s;
 }
 .cfg-btn-download:hover {
-  background: #33ffac;
-  box-shadow: 0 6px 20px rgba(0,255,153,0.4);
+  background: var(--primary-green-hover);
+  box-shadow: 0 6px 20px rgba(var(--primary-green-rgb), 0.28);
   transform: translateY(-1px);
+}
+
+@media (max-width: 760px) {
+  .cfg-meta-row { flex-direction: column; }
+  .cfg-thumb { width: 100%; max-width: 420px; }
+  .cfg-controls-row,
+  .cfg-tables-row,
+  .cfg-subtitle-grid { grid-template-columns: 1fr; }
+  .cfg-body { padding: 1rem; gap: 1rem; }
+  .cfg-header, .cfg-footer { padding-left: 1rem; padding-right: 1rem; }
+  .seg-group, .seg-group-fill { width: 100%; overflow-x: auto; }
+  .seg-group .seg-btn { flex: 1; }
 }
