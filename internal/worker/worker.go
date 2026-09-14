@@ -188,9 +188,8 @@ func (w *Worker) processOutput(dp *store.DownloadProgress, pipe io.Reader, isStd
 			if end := strings.LastIndex(line, "}"); end > start {
 				jsonSlice := line[start : end+1]
 				if strings.Contains(jsonSlice, `"status"`) {
-					HandleProgress(dp, []byte(jsonSlice))
-					if !isStderr {
-						continue // stdout JSON consumed — don't double-log
+					if HandleProgress(dp, []byte(jsonSlice)) {
+						continue // structured progress is surfaced in the progress fields
 					}
 				}
 			}
