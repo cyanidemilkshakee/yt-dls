@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -108,7 +109,16 @@ func (a *App) HandleInfo(w http.ResponseWriter, r *http.Request) {
 
 		status := http.StatusBadGateway
 		code := "PROCESSING_ERROR"
-		if strings.Contains(stderr, "unsupported url") {
+		message := "Could not retrieve media information."
+		if errors.Is(cmdErr, exec.ErrNotFound) {
+			status = http.StatusServiceUnavailable
+			code = "YTDLP_UNAVAILABLE"
+			message = "yt-dlp is unavailable. Install it or set YTDLP_PATH to a working executable."
+		} else if strings.Contains(stderr, "connection") || strings.Contains(stderr, "timed out") || strings.Contains(stderr, "network is unreachable") {
+			status = http.StatusServiceUnavailable
+			code = "UPSTREAM_UNAVAILABLE"
+			message = "yt-dlp could not reach the media host. Check the internet connection or proxy settings."
+		} else if strings.Contains(stderr, "unsupported url") {
 			status = http.StatusBadRequest
 			code = "UNSUPPORTED_URL"
 		} else if strings.Contains(stderr, "private") || strings.Contains(stderr, "not available") || strings.Contains(stderr, "deleted") {
@@ -120,7 +130,7 @@ func (a *App) HandleInfo(w http.ResponseWriter, r *http.Request) {
 		}
 
 		sendJSON(w, status, map[string]string{
-			"error":      "Could not retrieve media information.",
+			"error":      message,
 			"error_code": code,
 		})
 		return
@@ -141,7 +151,7 @@ func (a *App) HandleInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sendJSON(w, http.StatusOK, processInfoDict(rawInfo))
+	sendJSON(w, http.StatusOK, processInfoDict(rawInfo, validURL))
 }
 
 func processPlaylist(info map[string]any, originalURL string) map[string]any {
@@ -241,7 +251,7 @@ func processPlaylist(info map[string]any, originalURL string) map[string]any {
 	}
 }
 
-func processInfoDict(info map[string]any) map[string]any {
+func processInfoDict(info map[string]any, originalURL string) map[string]any {
 	var combinedFormats, videoFormats, audioFormats []map[string]any
 
 	durationF, _ := info["duration"].(float64)
@@ -429,6 +439,7 @@ func processInfoDict(info map[string]any) map[string]any {
 		if subtitleLangs[lang] {
 			continue
 		} // skip auto if manual exists
+		subtitleLangs[lang] = true
 		list, _ := slist.([]any)
 		for _, subAny := range list {
 			sub, ok := subAny.(map[string]any)
@@ -501,6 +512,7 @@ func processInfoDict(info map[string]any) map[string]any {
 	suggestedFilename := fmt.Sprintf("%s.%%(ext)s", sanitizeFilename(title))
 
 	return map[string]any{
+		"original_url":       originalURL,
 		"title":              title,
 		"thumbnail":          info["thumbnail"],
 		"description":        summary,

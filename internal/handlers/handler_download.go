@@ -51,6 +51,7 @@ func (a *App) HandleStartDownload(w http.ResponseWriter, r *http.Request) {
 	expectedVideo, expectedAudio := worker.ExpectedStreams(req)
 	dp := store.NewDownloadProgress(downloadID, expectedVideo, expectedAudio)
 	dp.URL = req.URL
+	dp.Thumbnail = req.Thumbnail
 
 	// Register in the store BEFORE enqueueing.
 	// The worker calls Store.Get(id) as its first action.
