@@ -25,6 +25,7 @@ type StreamProgress struct {
 type ProgressSnapshot struct {
 	DownloadID      string         `json:"download_id"`
 	URL             string         `json:"url,omitempty"`
+	Thumbnail       string         `json:"thumbnail,omitempty"`
 	Status          string         `json:"status"`
 	Progress        float64        `json:"progress"`
 	Speed           float64        `json:"speed"`
@@ -53,6 +54,7 @@ type DownloadProgress struct {
 
 	DownloadID      string
 	URL             string
+	Thumbnail       string
 	Status          string
 	Progress        float64
 	Speed           float64
@@ -171,6 +173,7 @@ func (dp *DownloadProgress) snapshotLocked() ProgressSnapshot {
 	snap := ProgressSnapshot{
 		DownloadID:      dp.DownloadID,
 		URL:             dp.URL,
+		Thumbnail:       dp.Thumbnail,
 		Status:          dp.Status,
 		Progress:        clamp(dp.Progress),
 		Speed:           dp.Speed,

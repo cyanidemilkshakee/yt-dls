@@ -7,11 +7,13 @@
 package config
 
 import (
+	"context"
 	"os"
 	osexec "os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -57,8 +59,11 @@ func Load() *Config {
 
 	ytDlpPath, ytDlpArgs := resolveYtDlpCommand(root)
 	if configured := strEnv("YTDLP_PATH", ""); configured != "" {
-		ytDlpPath = configured
-		ytDlpArgs = nil
+		configuredPath := resolveCommandPath(root, configured)
+		if commandRuns(configuredPath, "--version") {
+			ytDlpPath = configuredPath
+			ytDlpArgs = nil
+		}
 	}
 
 	cfg := &Config{
@@ -92,6 +97,12 @@ func Load() *Config {
 	return cfg
 }
 
+func commandRuns(path string, args ...string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return osexec.CommandContext(ctx, path, args...).Run() == nil
+}
+
 // resolveYtDlpCommand finds a usable yt-dlp command for local development.
 // Prefer an installed Python module when available because a PyInstaller
 // executable can be blocked by Windows extraction policies. Fall back to a
@@ -102,18 +113,39 @@ func resolveYtDlpCommand(root string) (string, []string) {
 		if err != nil {
 			continue
 		}
-		if err := osexec.Command(path, "-m", "yt_dlp", "--version").Run(); err == nil {
+		if commandRuns(path, "-m", "yt_dlp", "--version") {
 			return path, []string{"-m", "yt_dlp"}
 		}
 	}
 
 	for _, name := range []string{"yt-dlp.exe", "yt-dlp"} {
 		candidate := filepath.Join(root, name)
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() && commandRuns(candidate, "--version") {
 			return candidate, nil
 		}
 	}
 	return "yt-dlp", nil
+}
+
+// resolveCommandPath makes configured filesystem paths absolute. Downloads
+// run with their output directory as the process working directory, so a
+// relative YTDLP_PATH would otherwise work for /info and fail for /download.
+// Bare command names (for example "yt-dlp") are intentionally left for PATH
+// lookup.
+func resolveCommandPath(root, configured string) string {
+	if filepath.IsAbs(configured) {
+		return configured
+	}
+	if strings.ContainsAny(configured, `/\\`) {
+		return filepath.Join(root, configured)
+	}
+	// A bare name may still refer to a bundled executable beside the server;
+	// prefer that file when present, otherwise leave it for PATH resolution.
+	candidate := filepath.Join(root, configured)
+	if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+		return candidate
+	}
+	return configured
 }
 
 // ─── internal helpers ────────────────────────────────────────────────────────
@@ -135,8 +167,8 @@ func walkUp(dir, marker string, maxDepth int) string {
 }
 
 // findRootDir walks up from the binary's directory looking for the project root,
-// identified by the presence of a frontend/ subdirectory. Falls back to cwd on
-// `go run` (where the binary lives in a temp dir).
+// identified by go.mod. Falls back to cwd on `go run` (where the binary lives
+// in a temp dir), and supports packaged binaries whose directory has no go.mod.
 func findRootDir() string {
 	ex, err := os.Executable()
 	if err != nil {
@@ -146,13 +178,13 @@ func findRootDir() string {
 		return "."
 	}
 
-	if found := walkUp(filepath.Dir(ex), "frontend", 6); found != "" {
+	if found := walkUp(filepath.Dir(ex), "go.mod", 6); found != "" {
 		return found
 	}
 
 	// During `go run` the executable sits in a temp dir; fall back to cwd.
 	if cwd, _ := os.Getwd(); cwd != "" {
-		if found := walkUp(cwd, "frontend", 6); found != "" {
+		if found := walkUp(cwd, "go.mod", 6); found != "" {
 			return found
 		}
 	}
