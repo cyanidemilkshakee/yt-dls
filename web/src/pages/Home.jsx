@@ -66,7 +66,7 @@ export default function Home() {
                   id="url-input" 
                   type="text" 
                   placeholder="Enter Video or Playlist URL and press Enter" 
-                  className="input-base w-full p-4 rounded-lg bg-white/50 dark:bg-black/50 border border-[var(--border-light)] dark:border-[var(--border-dark)] outline-none focus:ring-2 focus:ring-[var(--primary-green)]" 
+                  className="input-base w-full p-4 rounded-lg bg-[var(--input-bg-light)] dark:bg-[var(--input-bg-dark)] border border-[var(--border-light)] dark:border-[var(--border-dark)] outline-none focus:ring-2 focus:ring-[var(--primary-green)]"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                   onKeyDown={handleKeyDown}
@@ -80,7 +80,7 @@ export default function Home() {
                   className="btn btn-primary absolute top-1/2 right-3 -translate-y-1/2 p-2.5 disabled:opacity-50"
                 >
                   {isFetching ? (
-                    <div role="status" className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-solid border-black border-r-transparent motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
+                    <div role="status" className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-solid border-[var(--primary-green)] border-r-transparent motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
                   ) : (
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
@@ -89,7 +89,7 @@ export default function Home() {
                 </button>
               </section>
               
-              {error && <p className="text-red-500 mb-4">{error}</p>}
+              {error && <p className="mb-4 text-[var(--primary-green)]">{error}</p>}
 
               <div className="home-actions-container">
                 <button onClick={() => setView('downloads')} className="btn btn-green-outline px-6 py-2">
@@ -109,14 +109,14 @@ export default function Home() {
               animate={{ opacity: 1, backdropFilter: 'blur(4px)' }}
               exit={{ opacity: 0, backdropFilter: 'blur(0px)' }}
               className="fixed inset-0 z-40 flex items-start justify-center"
-              style={{ background: 'rgba(0,0,0,0.55)', padding: '2.5rem 1rem' }}
+              style={{ background: 'rgba(11,16,32,0.72)', padding: '2.5rem 1rem' }}
             >
               <motion.div 
                 initial={{ y: 50, scale: 0.95 }}
                 animate={{ y: 0, scale: 1 }}
                 exit={{ y: 50, scale: 0.95, opacity: 0 }}
                 transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                style={{ width: '100%', maxWidth: '860px' }}
+                className="config-modal"
               >
                 <ConfigSection
                   info={videoInfo}
@@ -127,7 +127,7 @@ export default function Home() {
                         particleCount: 150,
                         spread: 70,
                         origin: { y: 0.6 },
-                        colors: ['#00ff99', '#0099ff', '#ffffff']
+                        colors: ['#35c997', '#8be6c7', '#dff8ed']
                       });
                     });
                     setView('downloads');
@@ -150,6 +150,7 @@ export default function Home() {
                 onConfigureSelected={async (selected) => {
                   const results = await Promise.allSettled(selected.map((entry) => startDownload({
                     url: entry.url,
+                    thumbnail: entry.thumbnail,
                     formatCode: 'bestvideo+bestaudio/best',
                     filename: '%(title)s',
                     outputFormat: 'default'

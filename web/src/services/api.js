@@ -1,6 +1,11 @@
-export const API_BASE_URL = location.protocol !== 'file:'
-  ? `${location.origin}/api`
-  : 'http://localhost:7391/api';
+// In Vite development, call the Go server directly so a backend startup or
+// restart cannot be obscured by a generic Vite proxy 502. Production builds
+// stay same-origin and continue using the server's /api route.
+export const API_BASE_URL = location.protocol === 'file:'
+  ? 'http://localhost:7391/api'
+  : import.meta.env?.DEV
+    ? 'http://127.0.0.1:7391/api'
+    : `${location.origin}/api`;
 
 const SETTINGS_KEY = 'yt-dls-advanced-settings';
 const SECRET_SETTINGS_KEY = 'yt-dls-session-secrets';
@@ -24,7 +29,10 @@ async function apiRequest(path, options = {}) {
       ? await response.json()
       : { error: (await response.text()).trim() || `HTTP ${response.status}` };
     if (!response.ok) {
-      const error = new Error(payload.error || `HTTP ${response.status}`);
+      const fallbackMessage = response.status === 502
+        ? 'The local API server is unavailable. Start the backend on port 7391 and try again.'
+        : `HTTP ${response.status}`;
+      const error = new Error(payload.error || fallbackMessage);
       error.status = response.status;
       error.code = payload.code || payload.error_code;
       error.payload = payload;
@@ -66,7 +74,9 @@ export async function fetchVideoInfo(url, retries = 3) {
       return await apiRequest(`/info?url=${encodeURIComponent(url)}`, { timeoutMs: 130_000 });
     } catch (error) {
       lastError = error;
-      const retryable = !error.status || error.status === 429 || error.status >= 500;
+      // Vite returns 502 while the Go backend is still starting. Retry that
+      // transient proxy response, along with throttling and gateway timeouts.
+      const retryable = !error.status || error.status === 429 || error.status === 502 || error.status === 504;
       if (!retryable || attempt === retries) throw error;
       await new Promise((resolve) => setTimeout(resolve, Math.min(750 * 2 ** (attempt - 1), 5000)));
     }
