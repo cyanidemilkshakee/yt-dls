@@ -8,6 +8,8 @@ package config
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"os"
 	osexec "os/exec"
 	"path/filepath"
@@ -28,6 +30,7 @@ type Config struct {
 	YtDlpPath      string   // path or name of the yt-dlp executable
 	YtDlpArgs      []string // optional launcher arguments, e.g. -m yt_dlp
 	YtDlpJSRuntime string   // optional custom JS runtime (e.g. node, deno)
+	NetworkProxy   string   // internal DNS-pinning proxy used when private URLs are disabled
 
 	// ── HTTP server ─────────────────────────────────────────────────────────
 	Port int
@@ -46,6 +49,8 @@ type Config struct {
 	MaxConcurrentDownloads int
 	MaxDownloadDurationMs  int64
 	InfoTimeoutMs          int64
+	InfoMaxOutputBytes     int
+	MaxConcurrentInfo      int
 }
 
 // Load reads configuration from the environment (and an optional .env file at
@@ -84,6 +89,8 @@ func Load() *Config {
 		MaxConcurrentDownloads: intEnv("MAX_CONCURRENT_DOWNLOADS", 3, 1, 32),
 		MaxDownloadDurationMs:  i64Env("MAX_DOWNLOAD_DURATION_MS", 30*60*1000, 10_000),
 		InfoTimeoutMs:          i64Env("INFO_TIMEOUT_MS", 120_000, 5_000),
+		InfoMaxOutputBytes:     intEnv("INFO_MAX_OUTPUT_BYTES", 16<<20, 1<<10, 256<<20),
+		MaxConcurrentInfo:      intEnv("MAX_CONCURRENT_INFO", 4, 1, 16),
 	}
 
 	cfg.DownloadDir = resolvePath(root, strEnv("DOWNLOAD_DIR", ""), "downloads")
@@ -95,6 +102,25 @@ func Load() *Config {
 	}
 
 	return cfg
+}
+
+// Validate rejects security-sensitive combinations that would expose the
+// unauthenticated local service with options that can access private resources,
+// write outside the default directory, or execute arbitrary commands.
+func (c *Config) Validate() error {
+	if !isLoopbackHost(c.Host) {
+		return fmt.Errorf("HOST must be a loopback address because the API has no authentication")
+	}
+	return nil
+}
+
+func isLoopbackHost(host string) bool {
+	host = strings.Trim(strings.TrimSpace(host), "[]")
+	if strings.EqualFold(host, "localhost") || strings.HasSuffix(strings.ToLower(host), ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func commandRuns(path string, args ...string) bool {

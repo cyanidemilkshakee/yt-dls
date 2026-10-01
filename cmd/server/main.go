@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cyanidemilkshakee/yt-dls/internal/handlers"
+	"github.com/cyanidemilkshakee/yt-dls/internal/network"
 
 	"github.com/cyanidemilkshakee/yt-dls/internal/bus"
 	"github.com/cyanidemilkshakee/yt-dls/internal/config"
@@ -21,12 +23,27 @@ import (
 
 func main() {
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		fmt.Fprintln(os.Stderr, "Invalid server configuration:", err)
+		os.Exit(1)
+	}
 
 	// ── Structured logging ───────────────────────────────────────────────────
 	// FIX: wire the LogLevel config field to slog so log verbosity is runtime-
 	// configurable via LOG_LEVEL env var (debug | info | warn | error).
 	logger := newLogger(cfg.LogLevel)
 	slog.SetDefault(logger)
+
+	var networkGuard *network.Guard
+	if !cfg.AllowPrivateURLs {
+		var err error
+		networkGuard, err = network.NewGuard()
+		if err != nil {
+			slog.Error("Failed to start outbound network guard", "err", err)
+			os.Exit(1)
+		}
+		cfg.NetworkProxy = networkGuard.URL
+	}
 
 	slog.Info("YT-DL Studio starting",
 		"ytdlp", cfg.YtDlpPath,
@@ -49,19 +66,16 @@ func main() {
 		Pool:       pool,
 		Store:      progressStore,
 		SSEGateway: sseGateway,
+		InfoSlots:  make(chan struct{}, cfg.MaxConcurrentInfo),
 	}
 
 	router := app.Router()
 
-	// FIX: add HTTP server timeouts to prevent slow clients from holding
-	// goroutines open indefinitely.
-	//   - ReadHeaderTimeout: guards against Slowloris-style attacks.
-	//   - ReadTimeout: total time to read the request (headers + body).
-	//   - WriteTimeout: 0 because SSE connections must stream indefinitely;
-	//     per-handler timeouts (chi's Timeout middleware) handle the rest.
-	//   - IdleTimeout: how long keep-alive connections may sit idle.
+	// ReadHeaderTimeout and ReadTimeout bound inbound request handling. The
+	// application gives metadata requests their configured deadline; SSE keeps
+	// the request context so client disconnects cancel the stream.
 	server := &http.Server{
-		Addr:              fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
+		Addr:              net.JoinHostPort(cfg.Host, fmt.Sprint(cfg.Port)),
 		Handler:           router,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
@@ -93,6 +107,9 @@ func main() {
 
 	// Stop worker pool
 	pool.Stop()
+	if networkGuard != nil {
+		networkGuard.Close()
+	}
 	slog.Info("Shutdown complete")
 }
 
