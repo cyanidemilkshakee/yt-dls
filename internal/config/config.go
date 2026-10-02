@@ -1,9 +1,8 @@
 // Package config loads and validates runtime configuration from environment
 // variables (and an optional .env file at the project root).
 //
-// Every exported field maps 1-to-1 to an environment variable whose name is
-// identical to the original Node.js config.js, so existing .env files work
-// without modification.
+// Environment-backed values are loaded from the project root's .env file;
+// NetworkProxy is assigned internally after the outbound guard starts.
 package config
 
 import (
@@ -23,7 +22,7 @@ import (
 // Config holds all server configuration. Fields are immutable after [Load].
 type Config struct {
 	// ── Paths ──────────────────────────────────────────────────────────────
-	RootDir     string // project root (parent of the go/ directory)
+	RootDir     string // directory containing go.mod
 	DownloadDir string // resolved download destination
 
 	// ── yt-dlp ─────────────────────────────────────────────────────────────
@@ -64,11 +63,10 @@ func Load() *Config {
 
 	ytDlpPath, ytDlpArgs := resolveYtDlpCommand(root)
 	if configured := strEnv("YTDLP_PATH", ""); configured != "" {
-		configuredPath := resolveCommandPath(root, configured)
-		if commandRuns(configuredPath, "--version") {
-			ytDlpPath = configuredPath
-			ytDlpArgs = nil
-		}
+		// An explicit path is authoritative. Surface an invalid path at health
+		// check or job start instead of silently using another installation.
+		ytDlpPath = resolveCommandPath(root, configured)
+		ytDlpArgs = nil
 	}
 
 	cfg := &Config{

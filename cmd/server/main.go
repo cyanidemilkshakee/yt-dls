@@ -47,7 +47,7 @@ func main() {
 
 	slog.Info("YT-DL Studio starting",
 		"ytdlp", cfg.YtDlpPath,
-		"host", fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
+		"host", net.JoinHostPort(cfg.Host, fmt.Sprint(cfg.Port)),
 		"dldir", cfg.DownloadDir,
 		"workers", cfg.MaxConcurrentDownloads,
 	)
@@ -97,12 +97,16 @@ func main() {
 	sig := <-sigChan
 
 	slog.Info("Shutting down", "signal", sig.String())
+	sseGateway.Close()
 
 	// Shutdown HTTP Server
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := server.Shutdown(ctx); err != nil {
 		slog.Error("HTTP server shutdown error", "err", err)
+		if closeErr := server.Close(); closeErr != nil {
+			slog.Error("HTTP server close error", "err", closeErr)
+		}
 	}
 
 	// Stop worker pool
