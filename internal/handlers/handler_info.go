@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/http"
 	"os/exec"
@@ -13,7 +14,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cyanidemilkshakee/yt-dls/internal/process"
 	"github.com/cyanidemilkshakee/yt-dls/internal/validation"
+	"github.com/cyanidemilkshakee/yt-dls/internal/worker"
 )
 
 var (
@@ -23,8 +26,8 @@ var (
 func sanitizeFilename(name string) string {
 	name = strings.ReplaceAll(name, " ", "_")
 	name = nonAlphanumeric.ReplaceAllString(name, "")
-	if len(name) > 200 {
-		name = name[:200]
+	if len(name) > 180 {
+		name = name[:180]
 	}
 	if name == "" {
 		return "video"
@@ -35,20 +38,38 @@ func sanitizeFilename(name string) string {
 // HandleInfo processes a request for video/playlist metadata.
 func (a *App) HandleInfo(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		URL string `json:"url"`
+		URL              string                  `json:"url"`
+		AdvancedSettings worker.AdvancedSettings `json:"advancedSettings"`
 	}
-	// Also accept query param for GET compatibility, though POST is preferred in JSON
-	req.URL = r.URL.Query().Get("url")
+	if !decodeRequest(w, r, &req, 1<<20) {
+		return
+	}
 	if req.URL == "" {
-		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB cap
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.URL == "" {
-			sendError(w, http.StatusBadRequest, "Missing or invalid 'url' parameter")
+		sendError(w, http.StatusBadRequest, "Missing or invalid 'url' parameter")
+		return
+	}
+	if a.InfoSlots != nil {
+		select {
+		case a.InfoSlots <- struct{}{}:
+			defer func() { <-a.InfoSlots }()
+		default:
+			sendError(w, http.StatusTooManyRequests, "Metadata service is busy. Please try again shortly.")
 			return
 		}
 	}
+	timeout := time.Duration(a.Cfg.InfoTimeoutMs) * time.Millisecond
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
+	defer cancel()
 
-	validURL, err := validation.ValidateMediaURL(req.URL, a.Cfg)
+	validURL, err := validation.ValidateMediaURLContext(ctx, req.URL, a.Cfg)
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			sendJSON(w, http.StatusGatewayTimeout, map[string]string{
+				"error":      "Metadata request timed out while resolving the media host.",
+				"error_code": "PROCESS_TIMEOUT",
+			})
+			return
+		}
 		sendJSON(w, http.StatusBadRequest, map[string]string{
 			"error":      err.Error(),
 			"error_code": "INVALID_URL",
@@ -59,10 +80,6 @@ func (a *App) HandleInfo(w http.ResponseWriter, r *http.Request) {
 	// In a real app we'd add an LRU cache here. For this port we'll just run it directly.
 	// (Cache logic can be added later if needed).
 
-	timeout := time.Duration(a.Cfg.InfoTimeoutMs) * time.Millisecond
-	ctx, cancel := context.WithTimeout(r.Context(), timeout)
-	defer cancel()
-
 	// Derive yt-dlp socket timeout (seconds) from the config value
 	socketTimeoutSecs := int(a.Cfg.InfoTimeoutMs/1000) - 5
 	if socketTimeoutSecs < 5 {
@@ -70,7 +87,7 @@ func (a *App) HandleInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	args := []string{
-		"--quiet", "--no-warnings", "--skip-download", "--flat-playlist", "--dump-single-json",
+		"--ignore-config", "--quiet", "--no-warnings", "--skip-download", "--flat-playlist", "--dump-single-json",
 		"--socket-timeout", fmt.Sprintf("%d", socketTimeoutSecs),
 		"--retries", "3", "--extractor-retries", "3",
 		"--fragment-retries", "3",
@@ -79,16 +96,28 @@ func (a *App) HandleInfo(w http.ResponseWriter, r *http.Request) {
 	if a.Cfg.YtDlpJSRuntime != "" {
 		args = append(args, "--js-runtimes", a.Cfg.YtDlpJSRuntime)
 	}
+	metadataArgs, err := worker.BuildMetadataArgs(req.AdvancedSettings, a.Cfg)
+	if err != nil {
+		code := "INVALID_OPTION"
+		var validationErr *validation.Error
+		if errors.As(err, &validationErr) {
+			code = validationErr.Code
+		}
+		sendJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error(), "error_code": code})
+		return
+	}
 
+	args = append(args, metadataArgs...)
 	args = append(args, validURL)
 
 	commandArgs := append([]string{}, a.Cfg.YtDlpArgs...)
 	commandArgs = append(commandArgs, args...)
-	cmd := exec.CommandContext(ctx, a.Cfg.YtDlpPath, commandArgs...)
-	// Hide console window on Windows
-	setSysProcAttr(cmd)
-
-	out, cmdErr := cmd.Output()
+	command := append([]string{a.Cfg.YtDlpPath}, commandArgs...)
+	maxOutput := a.Cfg.InfoMaxOutputBytes
+	if maxOutput <= 0 {
+		maxOutput = 16 << 20
+	}
+	out, stderr, cmdErr := process.Output(ctx, command, "", maxOutput)
 	if cmdErr != nil {
 		// FIX: check deadline first — if the context expired, always send 504
 		// regardless of what the process exit error says.
@@ -99,13 +128,17 @@ func (a *App) HandleInfo(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-
-		stderr := ""
-		if exitErr, ok := cmdErr.(*exec.ExitError); ok {
-			stderr = strings.ToLower(strings.TrimSpace(string(exitErr.Stderr)))
+		if errors.Is(cmdErr, process.ErrOutputLimit) {
+			sendJSON(w, http.StatusBadGateway, map[string]string{
+				"error":      "Metadata output exceeded the configured limit.",
+				"error_code": "OUTPUT_LIMIT",
+			})
+			return
 		}
 
-		fmt.Printf("yt-dlp failed! Error: %v\nStderr: %s\n", cmdErr, stderr)
+		stderr = strings.ToLower(strings.TrimSpace(stderr))
+
+		slog.Warn("Metadata process failed", "error", cmdErr)
 
 		status := http.StatusBadGateway
 		code := "PROCESSING_ERROR"
@@ -216,6 +249,12 @@ func processPlaylist(info map[string]any, originalURL string) map[string]any {
 		var viewCount any = entry["view_count"]
 
 		parsedEntries = append(parsedEntries, map[string]any{
+			"playlist_index": func() any {
+				if value := entry["playlist_index"]; value != nil {
+					return value
+				}
+				return i + 1
+			}(),
 			"id":         id,
 			"url":        url,
 			"title":      title,
@@ -470,53 +509,40 @@ func processInfoDict(info map[string]any, originalURL string) map[string]any {
 		subtitles = make([]map[string]any, 0)
 	}
 
-	// Make summary string
+	// Bound source text and chapters before exposing metadata to the browser.
 	desc, _ := info["description"].(string)
-	up, _ := info["uploader"].(string)
-	if up == "" {
-		up = "Unknown"
-	}
-
-	var summaryParts []string
-	if up != "Unknown" {
-		summaryParts = append(summaryParts, "Uploaded by: "+up)
-	}
-	if durationF > 0 {
-		d := int(durationF)
-		h := d / 3600
-		m := (d % 3600) / 60
-		s := d % 60
-		if h > 0 {
-			summaryParts = append(summaryParts, fmt.Sprintf("Duration: %02d:%02d:%02d", h, m, s))
-		} else {
-			summaryParts = append(summaryParts, fmt.Sprintf("Duration: %02d:%02d", m, s))
+	desc = boundedText(desc, 4000)
+	chapters := make([]map[string]any, 0)
+	if rawChapters, ok := info["chapters"].([]any); ok {
+		for _, raw := range rawChapters {
+			chapter, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			name, _ := chapter["title"].(string)
+			chapters = append(chapters, map[string]any{"title": boundedText(name, 200), "start_time": chapter["start_time"], "end_time": chapter["end_time"]})
+			if len(chapters) == 500 {
+				break
+			}
 		}
-	}
-	if desc != "" {
-		cleanDesc := strings.Join(strings.Fields(desc), " ") // collapse whitespace
-		if len(cleanDesc) > 200 {
-			cleanDesc = cleanDesc[:200] + "..."
-		}
-		summaryParts = append(summaryParts, cleanDesc)
-	}
-
-	summary := "No additional information available."
-	if len(summaryParts) > 0 {
-		summary = strings.Join(summaryParts, " | ")
 	}
 
 	title, _ := info["title"].(string)
 	if title == "" {
 		title = "video"
 	}
-	suggestedFilename := fmt.Sprintf("%s.%%(ext)s", sanitizeFilename(title))
+	suggestedFilename := fmt.Sprintf("%s_%%(id)s.%%(ext)s", sanitizeFilename(title))
 
 	return map[string]any{
 		"original_url":       originalURL,
 		"title":              title,
 		"thumbnail":          info["thumbnail"],
-		"description":        summary,
+		"description":        desc,
+		"id":                 info["id"],
+		"chapters":           chapters,
 		"duration":           durationF,
+		"view_count":         info["view_count"],
+		"ext":                info["ext"],
 		"uploader":           info["uploader"],
 		"upload_date":        info["upload_date"],
 		"suggested_filename": suggestedFilename,
@@ -526,7 +552,15 @@ func processInfoDict(info map[string]any, originalURL string) map[string]any {
 		"best_audio_ids":     bestAudioIds,
 		"subtitles":          subtitles,
 		"subtitle_languages": langsList,
-		"has_chapters":       info["chapters"] != nil,
+		"has_chapters":       len(chapters) > 0,
 		"is_live":            info["is_live"] == true || info["is_live"] == "true",
 	}
+}
+
+func boundedText(value string, limit int) string {
+	characters := []rune(value)
+	if len(characters) <= limit {
+		return value
+	}
+	return string(characters[:limit]) + "…"
 }

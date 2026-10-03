@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/cyanidemilkshakee/yt-dls/internal/store"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -91,6 +93,19 @@ func (a *App) HandleCancelDownload(w http.ResponseWriter, r *http.Request) {
 	// Tell the progress tracker to cancel.
 	// The Worker is listening to dp.Context().Done() via command Context.
 	dp.Cancel()
+	if a.Pool != nil {
+		a.Pool.RemoveQueued(id)
+	}
+	dp.Update(func(p *store.DownloadProgress) {
+		if p.Status == "completed" || p.Status == "failed" || p.Status == "cancelled" {
+			return
+		}
+		p.Status = "cancelled"
+		now := time.Now()
+		p.CompletedAt = &now
+		p.AddLogLocked("Download was cancelled")
+		p.MarkIncompleteStreams("cancelled")
+	})
 
 	sendJSON(w, http.StatusOK, map[string]string{
 		"status":  "success",
@@ -113,8 +128,24 @@ func (a *App) HandleDeleteDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Stop the worker immediately, then remove from store.
+	if !store.Terminal(dp.Snapshot().Status) {
+		sendError(w, http.StatusConflict, "Cancel or finish the job before removing its history")
+		return
+	}
+	if a.Store.ActiveBatchContains(id) {
+		sendError(w, http.StatusConflict, "This item belongs to an active batch. Finish or cancel the batch before removing its history.")
+		return
+	}
+	// Remove the history record; result files remain on disk.
+	if !dp.FilesMu.TryLock() {
+		sendError(w, 409, "Wait for the worker and file transfers to finish before removing history")
+		return
+	}
+	defer dp.FilesMu.Unlock()
 	dp.Cancel()
+	if a.Pool != nil {
+		a.Pool.RemoveQueued(id)
+	}
 	a.Store.Delete(id)
 
 	sendJSON(w, http.StatusOK, map[string]string{
