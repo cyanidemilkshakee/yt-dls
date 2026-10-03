@@ -12,6 +12,10 @@ logs/
 *.log
 *.log.gz
 /downloads/
+/.yt-dls/
+/.cache/
+/.venv/
+/dist/
 
 # Environment
 .env
@@ -27,3 +31,7 @@ Thumbs.db
 # Scratch / temp
 diff.txt
 *.backup
+
+# Browser verification output
+/test-results/
+/playwright-report/
