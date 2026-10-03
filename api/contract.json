@@ -1,0 +1,2053 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yt-dls.local/api/contract",
+  "title": "YT-DL Studio API contract",
+  "version": 1,
+  "enums": {
+    "mergeFormats": [
+      "avi",
+      "flv",
+      "mkv",
+      "mov",
+      "mp4",
+      "webm"
+    ],
+    "audioFormats": [
+      "aac",
+      "alac",
+      "flac",
+      "m4a",
+      "mp3",
+      "opus",
+      "vorbis",
+      "wav"
+    ],
+    "videoFormats": [
+      "avi",
+      "flv",
+      "gif",
+      "mkv",
+      "mov",
+      "mp4",
+      "webm"
+    ],
+    "subtitleFormats": [
+      "ass",
+      "lrc",
+      "srt",
+      "vtt"
+    ],
+    "concatPolicies": [
+      "never",
+      "always",
+      "multi_video"
+    ],
+    "fixupPolicies": [
+      "never",
+      "warn",
+      "detect_or_warn",
+      "force"
+    ],
+    "thumbFormats": [
+      "jpg",
+      "png",
+      "webp"
+    ],
+    "downloadModes": [
+      "both",
+      "video",
+      "audio"
+    ],
+    "terminalStatuses": [
+      "completed",
+      "failed",
+      "cancelled"
+    ],
+    "downloadStatuses": [
+      "initializing",
+      "waiting_for_capacity",
+      "queued",
+      "starting",
+      "preparing",
+      "downloading",
+      "processing",
+      "completed",
+      "failed",
+      "cancelled"
+    ]
+  },
+  "$defs": {
+    "DownloadOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "maxLength": 8192,
+          "x-maxBytes": 8192,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "thumbnail": {
+          "type": "string",
+          "maxLength": 8192,
+          "x-maxBytes": 8192,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "formatCode": {
+          "type": "string",
+          "maxLength": 300,
+          "x-maxBytes": 300,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "videoMultistreams": {
+          "type": "boolean"
+        },
+        "audioMultistreams": {
+          "type": "boolean"
+        },
+        "filename": {
+          "type": "string",
+          "maxLength": 200,
+          "x-maxBytes": 200,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "outputFormat": {
+          "type": "string",
+          "enum": [
+            "",
+            "default",
+            "avi",
+            "flv",
+            "mkv",
+            "mov",
+            "mp4",
+            "webm"
+          ],
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "overwrite": {
+          "type": "boolean"
+        },
+        "downloadMode": {
+          "type": "string",
+          "enum": [
+            "default",
+            "",
+            "both",
+            "video",
+            "audio"
+          ],
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "downloadPath": {
+          "type": "string",
+          "maxLength": 4096,
+          "x-maxBytes": 4096,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "enableSubtitles": {
+          "type": "boolean"
+        },
+        "subtitleLang": {
+          "type": "string",
+          "maxLength": 100,
+          "x-maxBytes": 100,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "embedSubs": {
+          "type": "boolean"
+        },
+        "convertSubs": {
+          "type": "string",
+          "enum": [
+            "default",
+            "",
+            "ass",
+            "lrc",
+            "srt",
+            "vtt"
+          ],
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "subtitleFormat": {
+          "type": "string",
+          "enum": [
+            "default",
+            "",
+            "best",
+            "ass",
+            "lrc",
+            "srt",
+            "vtt"
+          ],
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "embedThumbnail": {
+          "type": "boolean"
+        },
+        "embedMetadata": {
+          "type": "boolean"
+        },
+        "addChapters": {
+          "type": "boolean"
+        },
+        "embedInfoJson": {
+          "type": "boolean"
+        },
+        "xattrs": {
+          "type": "boolean"
+        },
+        "parseMetadata": {
+          "type": "string",
+          "maxLength": 500,
+          "x-maxBytes": 500,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "replaceInMetadata": {
+          "type": "string",
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "enablePostprocessing": {
+          "type": "boolean"
+        },
+        "extractAudio": {
+          "type": "boolean"
+        },
+        "audioFormat": {
+          "type": "string",
+          "enum": [
+            "default",
+            "",
+            "best",
+            "aac",
+            "alac",
+            "flac",
+            "m4a",
+            "mp3",
+            "opus",
+            "vorbis",
+            "wav"
+          ],
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "audioQuality": {
+          "type": "string",
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "remuxVideo": {
+          "type": "string",
+          "enum": [
+            "default",
+            "",
+            "aac",
+            "alac",
+            "flac",
+            "m4a",
+            "mp3",
+            "opus",
+            "vorbis",
+            "wav",
+            "avi",
+            "flv",
+            "gif",
+            "mkv",
+            "mov",
+            "mp4",
+            "webm"
+          ],
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "recodeVideo": {
+          "type": "string",
+          "enum": [
+            "default",
+            "",
+            "avi",
+            "flv",
+            "gif",
+            "mkv",
+            "mov",
+            "mp4",
+            "webm"
+          ],
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "convertThumb": {
+          "type": "string",
+          "enum": [
+            "default",
+            "",
+            "jpg",
+            "png",
+            "webp"
+          ],
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "postprocessorArgs": {
+          "type": "string",
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "keepVideo": {
+          "type": "boolean"
+        },
+        "postOverwrites": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "splitChapters": {
+          "type": "boolean"
+        },
+        "forceKeyframes": {
+          "type": "boolean"
+        },
+        "concatPlaylist": {
+          "type": "string",
+          "enum": [
+            "default",
+            "",
+            "never",
+            "always",
+            "multi_video"
+          ],
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "playlistItems": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000
+          },
+          "maxItems": 500,
+          "uniqueItems": true
+        },
+        "fixup": {
+          "type": "string",
+          "enum": [
+            "default",
+            "",
+            "never",
+            "warn",
+            "detect_or_warn",
+            "force"
+          ],
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "advancedSettings": {
+          "$ref": "#/$defs/AdvancedSettings"
+        }
+      },
+      "required": [
+        "url",
+        "downloadMode"
+      ]
+    },
+    "AdvancedSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "proxy": {
+          "type": "string",
+          "maxLength": 500,
+          "x-maxBytes": 500,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "socket-timeout": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "source-address": {
+          "type": "string",
+          "maxLength": 100,
+          "x-maxBytes": 100,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "geo-verification-proxy": {
+          "type": "string",
+          "maxLength": 500,
+          "x-maxBytes": 500,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "xff": {
+          "type": "string",
+          "maxLength": 100,
+          "x-maxBytes": 100,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "impersonate": {
+          "type": "string",
+          "maxLength": 100,
+          "x-maxBytes": 100,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "force-ipv4": {
+          "type": "boolean"
+        },
+        "force-ipv6": {
+          "type": "boolean"
+        },
+        "enable-file-urls": {
+          "type": "boolean"
+        },
+        "username": {
+          "type": "string",
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "password": {
+          "type": "string",
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "twofactor": {
+          "type": "string",
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "video-password": {
+          "type": "string",
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "ap-mso": {
+          "type": "string",
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "ap-username": {
+          "type": "string",
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "ap-password": {
+          "type": "string",
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "netrc": {
+          "type": "boolean"
+        },
+        "netrc-location": {
+          "type": "string",
+          "maxLength": 500,
+          "x-maxBytes": 500,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "netrc-cmd": {
+          "type": "string",
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "client-certificate": {
+          "type": "string",
+          "maxLength": 500,
+          "x-maxBytes": 500,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "client-certificate-key": {
+          "type": "string",
+          "maxLength": 500,
+          "x-maxBytes": 500,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "client-certificate-password": {
+          "type": "string",
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "cookies": {
+          "type": "string",
+          "maxLength": 500,
+          "x-maxBytes": 500,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "cookies-from-browser": {
+          "type": "string",
+          "maxLength": 500,
+          "x-maxBytes": 500,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "extractor-retries": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "ignore-dynamic-mpd": {
+          "type": "boolean"
+        },
+        "hls-split-discontinuity": {
+          "type": "boolean"
+        },
+        "extractor-args": {
+          "type": "string",
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "ffmpeg-location": {
+          "type": "string",
+          "maxLength": 500,
+          "x-maxBytes": 500,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "exec": {
+          "type": "string",
+          "maxLength": 2000,
+          "x-maxBytes": 2000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "no-exec": {
+          "type": "boolean"
+        },
+        "sponsorblock-mark": {
+          "type": "string",
+          "maxLength": 500,
+          "x-maxBytes": 500,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "sponsorblock-remove": {
+          "type": "string",
+          "maxLength": 500,
+          "x-maxBytes": 500,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "sponsorblock-chapter-title": {
+          "type": "string",
+          "maxLength": 500,
+          "x-maxBytes": 500,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "sponsorblock-api": {
+          "type": "string",
+          "maxLength": 500,
+          "x-maxBytes": 500,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "no-sponsorblock": {
+          "type": "boolean"
+        },
+        "download-archive": {
+          "type": "string",
+          "maxLength": 500,
+          "x-maxBytes": 500,
+          "pattern": "^[^\\u0000]*$"
+        }
+      }
+    },
+    "ProgressSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "type": "integer"
+        },
+        "queued_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "streams": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/StreamProgress"
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ResultFile"
+          }
+        },
+        "kind": {
+          "type": "string"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "batch": {
+          "$ref": "#/$defs/BatchProgress"
+        },
+        "retry_needs_url": {
+          "type": "boolean"
+        },
+        "download_id": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "thumbnail": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "initializing",
+            "waiting_for_capacity",
+            "queued",
+            "starting",
+            "preparing",
+            "downloading",
+            "processing",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "progress": {
+          "type": "number"
+        },
+        "speed": {
+          "type": "number"
+        },
+        "eta": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "downloaded_bytes": {
+          "type": "integer"
+        },
+        "total_bytes": {
+          "type": "integer"
+        },
+        "filename": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "started_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "completed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "video_progress": {
+          "$ref": "#/$defs/StreamProgress"
+        },
+        "audio_progress": {
+          "$ref": "#/$defs/StreamProgress"
+        }
+      },
+      "required": [
+        "download_id",
+        "status",
+        "version",
+        "progress",
+        "video_progress",
+        "audio_progress"
+      ]
+    },
+    "StreamProgress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "expected": {
+          "type": "boolean"
+        },
+        "combined": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string"
+        },
+        "progress": {
+          "type": "number"
+        },
+        "speed": {
+          "type": "number"
+        },
+        "eta": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "downloadedBytes": {
+          "type": "integer"
+        },
+        "totalBytes": {
+          "type": "integer"
+        }
+      }
+    },
+    "ResultFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "index": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer"
+        }
+      }
+    },
+    "BatchProgress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "total": {
+          "type": "integer"
+        },
+        "admitted": {
+          "type": "integer"
+        },
+        "completed": {
+          "type": "integer"
+        },
+        "failed": {
+          "type": "integer"
+        },
+        "cancelled": {
+          "type": "integer"
+        }
+      }
+    },
+    "Capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cancel": {
+          "type": "boolean"
+        },
+        "batch": {
+          "type": "boolean"
+        },
+        "retry": {
+          "type": "boolean"
+        },
+        "result_files": {
+          "type": "boolean"
+        },
+        "pause_resume": {
+          "type": "boolean"
+        },
+        "network_guard": {
+          "type": "boolean"
+        },
+        "custom_download_path": {
+          "type": "boolean"
+        },
+        "dangerous_options": {
+          "type": "boolean"
+        },
+        "events": {
+          "type": "boolean"
+        },
+        "playlist_concat": {
+          "type": "boolean"
+        },
+        "file_cleanup": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Health": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "app_version": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string"
+        },
+        "build_time": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "ytdlp_version": {
+          "type": "string"
+        },
+        "ejs_status": {
+          "type": "string"
+        },
+        "ejs_version": {
+          "type": "string"
+        },
+        "ffmpeg_version": {
+          "type": "string"
+        },
+        "ffprobe_version": {
+          "type": "string"
+        },
+        "js_runtime": {
+          "type": "string"
+        },
+        "js_runtime_version": {
+          "type": "string"
+        },
+        "ytdlp_available": {
+          "type": "boolean"
+        },
+        "ffmpeg_available": {
+          "type": "boolean"
+        },
+        "ffprobe_available": {
+          "type": "boolean"
+        },
+        "js_runtime_available": {
+          "type": "boolean"
+        },
+        "download_directory_exists": {
+          "type": "boolean"
+        },
+        "download_directory_writable": {
+          "type": "boolean"
+        },
+        "supports_pause_resume": {
+          "type": "boolean"
+        },
+        "ejs_available": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "max_concurrent_downloads": {
+          "type": "integer"
+        },
+        "info_timeout_ms": {
+          "type": "integer"
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "capabilities": {
+          "$ref": "#/$defs/Capabilities"
+        }
+      },
+      "required": [
+        "app_version",
+        "commit",
+        "build_time",
+        "status",
+        "platform",
+        "ytdlp_version",
+        "ejs_status",
+        "ejs_version",
+        "ffmpeg_version",
+        "ffprobe_version",
+        "js_runtime",
+        "js_runtime_version",
+        "ytdlp_available",
+        "ffmpeg_available",
+        "ffprobe_available",
+        "js_runtime_available",
+        "download_directory_exists",
+        "download_directory_writable",
+        "supports_pause_resume",
+        "ejs_available",
+        "max_concurrent_downloads",
+        "info_timeout_ms",
+        "issues",
+        "capabilities"
+      ]
+    },
+    "Format": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ext": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "format": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "format_note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resolution": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "vcodec": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "acodec": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filesize": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "tbr": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "abr": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "vbr": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "fps": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "width": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "height": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "filesize_is_approx": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Subtitle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lang": {
+          "type": "string"
+        },
+        "ext": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "auto": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Chapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "start_time": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "end_time": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "VideoInfo": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "original_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "thumbnail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ext": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "uploader": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "upload_date": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "suggested_filename": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "duration": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "view_count": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "video_formats": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/Format"
+          }
+        },
+        "audio_formats": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/Format"
+          }
+        },
+        "subtitles": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/Subtitle"
+          }
+        },
+        "chapters": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/Chapter"
+          }
+        },
+        "best_video_ids": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "best_audio_ids": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "subtitle_languages": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "has_chapters": {
+          "type": "boolean"
+        },
+        "is_live": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "original_url",
+        "video_formats",
+        "audio_formats",
+        "has_chapters",
+        "is_live"
+      ]
+    },
+    "PlaylistEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "thumbnail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "uploader": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "duration": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "view_count": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "playlist_index": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "id",
+        "url",
+        "title",
+        "playlist_index"
+      ]
+    },
+    "PlaylistInfo": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "_type": {
+          "const": "playlist",
+          "type": "string"
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "uploader": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "original_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "entry_count": {
+          "type": "integer"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PlaylistEntry"
+          }
+        }
+      },
+      "required": [
+        "_type",
+        "id",
+        "title",
+        "entries",
+        "entry_count",
+        "original_url"
+      ]
+    },
+    "InfoRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "maxLength": 8192,
+          "x-maxBytes": 8192,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "advancedSettings": {
+          "$ref": "#/$defs/AdvancedSettings"
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
+    "RetryRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "maxLength": 8192,
+          "x-maxBytes": 8192,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "advancedSettings": {
+          "$ref": "#/$defs/AdvancedSettings"
+        }
+      }
+    },
+    "BatchEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "maxLength": 8192,
+          "x-maxBytes": 8192,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "filename": {
+          "type": "string",
+          "maxLength": 200,
+          "x-maxBytes": 200,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "thumbnail": {
+          "type": "string",
+          "maxLength": 8192,
+          "x-maxBytes": 8192,
+          "pattern": "^[^\\u0000]*$"
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
+    "BatchRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "entries": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 500,
+          "items": {
+            "$ref": "#/$defs/BatchEntry"
+          }
+        },
+        "options": {
+          "$ref": "#/$defs/SharedDownloadOptions"
+        }
+      },
+      "required": [
+        "entries",
+        "options"
+      ]
+    },
+    "CommandPreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "shell": {
+          "type": "string"
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "command",
+        "shell",
+        "argv"
+      ]
+    },
+    "Admission": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "History": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "downloads": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProgressSnapshot"
+          }
+        },
+        "total": {
+          "type": "integer"
+        },
+        "next_offset": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "downloads",
+        "total",
+        "next_offset"
+      ]
+    },
+    "Log": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "log": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "log"
+      ]
+    },
+    "RetainedFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer"
+        },
+        "modified": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "size",
+        "modified"
+      ]
+    },
+    "RetainedPreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RetainedFile"
+          }
+        },
+        "total_bytes": {
+          "type": "integer"
+        },
+        "token": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "files",
+        "total_bytes",
+        "token"
+      ]
+    },
+    "CleanupRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "token"
+      ]
+    },
+    "CleanupResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "removed": {
+          "type": "integer"
+        },
+        "bytes_freed": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "removed",
+        "bytes_freed"
+      ]
+    },
+    "Error": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "error_code": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "error"
+      ]
+    },
+    "StatusMap": {
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ProgressSnapshot"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "EventStream": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "progress"
+            },
+            "downloadId": {
+              "type": "string"
+            },
+            "data": {
+              "$ref": "#/$defs/ProgressSnapshot"
+            }
+          },
+          "required": [
+            "type",
+            "downloadId",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "snapshot"
+            },
+            "downloads": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ProgressSnapshot"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "downloads"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "resync"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        }
+      ]
+    },
+    "BinaryFile": {
+      "type": "string",
+      "contentMediaType": "application/octet-stream"
+    },
+    "Success": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ]
+    },
+    "SharedDownloadOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "maxLength": 8192,
+          "x-maxBytes": 8192,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "thumbnail": {
+          "type": "string",
+          "maxLength": 8192,
+          "x-maxBytes": 8192,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "formatCode": {
+          "type": "string",
+          "maxLength": 300,
+          "x-maxBytes": 300,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "videoMultistreams": {
+          "type": "boolean"
+        },
+        "audioMultistreams": {
+          "type": "boolean"
+        },
+        "filename": {
+          "type": "string",
+          "maxLength": 200,
+          "x-maxBytes": 200,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "outputFormat": {
+          "type": "string",
+          "enum": [
+            "",
+            "default",
+            "avi",
+            "flv",
+            "mkv",
+            "mov",
+            "mp4",
+            "webm"
+          ],
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "overwrite": {
+          "type": "boolean"
+        },
+        "downloadMode": {
+          "type": "string",
+          "enum": [
+            "default",
+            "",
+            "both",
+            "video",
+            "audio"
+          ],
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "downloadPath": {
+          "type": "string",
+          "maxLength": 4096,
+          "x-maxBytes": 4096,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "enableSubtitles": {
+          "type": "boolean"
+        },
+        "subtitleLang": {
+          "type": "string",
+          "maxLength": 100,
+          "x-maxBytes": 100,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "embedSubs": {
+          "type": "boolean"
+        },
+        "convertSubs": {
+          "type": "string",
+          "enum": [
+            "default",
+            "",
+            "ass",
+            "lrc",
+            "srt",
+            "vtt"
+          ],
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "subtitleFormat": {
+          "type": "string",
+          "enum": [
+            "default",
+            "",
+            "best",
+            "ass",
+            "lrc",
+            "srt",
+            "vtt"
+          ],
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "embedThumbnail": {
+          "type": "boolean"
+        },
+        "embedMetadata": {
+          "type": "boolean"
+        },
+        "addChapters": {
+          "type": "boolean"
+        },
+        "embedInfoJson": {
+          "type": "boolean"
+        },
+        "xattrs": {
+          "type": "boolean"
+        },
+        "parseMetadata": {
+          "type": "string",
+          "maxLength": 500,
+          "x-maxBytes": 500,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "replaceInMetadata": {
+          "type": "string",
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "enablePostprocessing": {
+          "type": "boolean"
+        },
+        "extractAudio": {
+          "type": "boolean"
+        },
+        "audioFormat": {
+          "type": "string",
+          "enum": [
+            "default",
+            "",
+            "best",
+            "aac",
+            "alac",
+            "flac",
+            "m4a",
+            "mp3",
+            "opus",
+            "vorbis",
+            "wav"
+          ],
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "audioQuality": {
+          "type": "string",
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "remuxVideo": {
+          "type": "string",
+          "enum": [
+            "default",
+            "",
+            "aac",
+            "alac",
+            "flac",
+            "m4a",
+            "mp3",
+            "opus",
+            "vorbis",
+            "wav",
+            "avi",
+            "flv",
+            "gif",
+            "mkv",
+            "mov",
+            "mp4",
+            "webm"
+          ],
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "recodeVideo": {
+          "type": "string",
+          "enum": [
+            "default",
+            "",
+            "avi",
+            "flv",
+            "gif",
+            "mkv",
+            "mov",
+            "mp4",
+            "webm"
+          ],
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "convertThumb": {
+          "type": "string",
+          "enum": [
+            "default",
+            "",
+            "jpg",
+            "png",
+            "webp"
+          ],
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "postprocessorArgs": {
+          "type": "string",
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "keepVideo": {
+          "type": "boolean"
+        },
+        "postOverwrites": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "splitChapters": {
+          "type": "boolean"
+        },
+        "forceKeyframes": {
+          "type": "boolean"
+        },
+        "concatPlaylist": {
+          "type": "string",
+          "enum": [
+            "default",
+            "",
+            "never",
+            "always",
+            "multi_video"
+          ],
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "playlistItems": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000
+          },
+          "maxItems": 500,
+          "uniqueItems": true
+        },
+        "fixup": {
+          "type": "string",
+          "enum": [
+            "default",
+            "",
+            "never",
+            "warn",
+            "detect_or_warn",
+            "force"
+          ],
+          "maxLength": 1000,
+          "x-maxBytes": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "advancedSettings": {
+          "$ref": "#/$defs/AdvancedSettings"
+        }
+      },
+      "required": []
+    }
+  },
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/health",
+      "response": "Health"
+    },
+    {
+      "method": "POST",
+      "path": "/api/info",
+      "request": "InfoRequest",
+      "responses": [
+        "VideoInfo",
+        "PlaylistInfo"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/downloads",
+      "response": "History"
+    },
+    {
+      "method": "GET",
+      "path": "/api/downloads/events",
+      "response": "EventStream"
+    },
+    {
+      "method": "GET",
+      "path": "/api/downloads/status/batch",
+      "response": "StatusMap"
+    },
+    {
+      "method": "POST",
+      "path": "/api/download",
+      "request": "DownloadOptions",
+      "response": "Admission"
+    },
+    {
+      "method": "POST",
+      "path": "/api/download/command-preview",
+      "request": "DownloadOptions",
+      "response": "CommandPreview"
+    },
+    {
+      "method": "POST",
+      "path": "/api/download/batch",
+      "request": "BatchRequest",
+      "response": "Admission"
+    },
+    {
+      "method": "GET",
+      "path": "/api/download/{id}/status",
+      "response": "ProgressSnapshot"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/download/{id}",
+      "response": "Success"
+    },
+    {
+      "method": "POST",
+      "path": "/api/download/{id}/cancel",
+      "response": "Success"
+    },
+    {
+      "method": "GET",
+      "path": "/api/download/{id}/log",
+      "response": "Log"
+    },
+    {
+      "method": "POST",
+      "path": "/api/download/{id}/retry",
+      "request": "RetryRequest",
+      "response": "Admission"
+    },
+    {
+      "method": "GET",
+      "path": "/api/download/{id}/file/{index}",
+      "response": "BinaryFile"
+    },
+    {
+      "method": "GET",
+      "path": "/api/download/{id}/files",
+      "response": "RetainedPreview"
+    },
+    {
+      "method": "POST",
+      "path": "/api/download/{id}/files/cleanup",
+      "request": "CleanupRequest",
+      "response": "CleanupResult"
+    }
+  ]
+}
