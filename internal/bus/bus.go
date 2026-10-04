@@ -10,6 +10,7 @@ type EventType string
 const (
 	// EventProgress is emitted when a download's progress changes.
 	EventProgress EventType = "progress"
+	EventResync   EventType = "resync"
 )
 
 // Event represents a single message published to the bus.
@@ -62,18 +63,26 @@ func (b *Bus) Unsubscribe(sub Subscriber) {
 // If a subscriber's buffer is full, the event is dropped for that subscriber
 // to prevent blocking the publisher (e.g., worker goroutine).
 func (b *Bus) Publish(e Event) {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
 	for sub := range b.subscribers {
 		select {
 		case sub <- e:
 			// Sent successfully
 		default:
-			// Subscriber buffer full — drop event.
-			// In an SSE context, dropping an intermediate progress event is
-			// fine because the frontend only cares about the latest state,
-			// and throttling will ensure we don't spam anyway.
+			// Overflow must be observable: discard stale frames and force an
+			// authoritative resync instead of silently losing a terminal update.
+		drain:
+			for {
+				select {
+				case <-sub:
+				default:
+					break drain
+				}
+			}
+			sub <- Event{Type: EventResync}
+			sub <- e
 		}
 	}
 }

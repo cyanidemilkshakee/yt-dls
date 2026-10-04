@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	osexec "os/exec"
 	"path/filepath"
@@ -24,6 +25,7 @@ type Config struct {
 	// ── Paths ──────────────────────────────────────────────────────────────
 	RootDir     string // directory containing go.mod
 	DownloadDir string // resolved download destination
+	StateDir    string // bounded local history
 
 	// ── yt-dlp ─────────────────────────────────────────────────────────────
 	YtDlpPath      string   // path or name of the yt-dlp executable
@@ -50,11 +52,12 @@ type Config struct {
 	InfoTimeoutMs          int64
 	InfoMaxOutputBytes     int
 	MaxConcurrentInfo      int
+	envError               error
 }
 
 // Load reads configuration from the environment (and an optional .env file at
-// the project root). Missing or malformed values fall back to the same defaults
-// as the original Node.js config.js.
+// the project root). Missing values use defaults; Validate rejects malformed
+// or out-of-range values before the server starts.
 func Load() *Config {
 	root := findRootDir()
 
@@ -92,6 +95,15 @@ func Load() *Config {
 	}
 
 	cfg.DownloadDir = resolvePath(root, strEnv("DOWNLOAD_DIR", ""), "downloads")
+	cfg.StateDir = resolvePath(root, strEnv("STATE_DIR", ""), ".yt-dls")
+	if cfg.YtDlpJSRuntime == "" {
+		for _, name := range []string{"deno", "node"} {
+			if path, err := osexec.LookPath(name); err == nil {
+				cfg.YtDlpJSRuntime = name + ":" + path
+				break
+			}
+		}
+	}
 
 	for _, o := range strings.Split(strEnv("FRONTEND_ORIGIN", ""), ",") {
 		if o = strings.TrimSpace(o); o != "" {
@@ -99,6 +111,7 @@ func Load() *Config {
 		}
 	}
 
+	cfg.envError = validateEnvironment()
 	return cfg
 }
 
@@ -106,8 +119,55 @@ func Load() *Config {
 // unauthenticated local service with options that can access private resources,
 // write outside the default directory, or execute arbitrary commands.
 func (c *Config) Validate() error {
+	if c.envError != nil {
+		return c.envError
+	}
 	if !isLoopbackHost(c.Host) {
 		return fmt.Errorf("HOST must be a loopback address because the API has no authentication")
+	}
+	if c.Port < 1 || c.Port > 65535 {
+		return fmt.Errorf("PORT must be between 1 and 65535")
+	}
+	for _, origin := range c.FrontendOrigins {
+		parsed, err := url.Parse(origin)
+		if err != nil || parsed.Scheme != "http" && parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return fmt.Errorf("FRONTEND_ORIGIN must contain complete HTTP origins without paths or wildcards")
+		}
+		if strings.Contains(origin, "*") {
+			return fmt.Errorf("wildcard origins are not allowed")
+		}
+	}
+	if runtime := strings.SplitN(c.YtDlpJSRuntime, ":", 2)[0]; runtime != "" && runtime != "node" && runtime != "deno" && runtime != "bun" && runtime != "quickjs" {
+		return fmt.Errorf("YTDLP_JS_RUNTIME must name node, deno, bun, or quickjs")
+	}
+	return nil
+}
+
+func validateEnvironment() error {
+	ranges := map[string][2]int64{"PORT": {1, 65535}, "MAX_CONCURRENT_DOWNLOADS": {1, 32}, "MAX_DOWNLOAD_DURATION_MS": {10000, 86400000}, "INFO_TIMEOUT_MS": {5000, 600000}, "INFO_MAX_OUTPUT_BYTES": {1 << 10, 256 << 20}, "MAX_CONCURRENT_INFO": {1, 16}}
+	for key, bounds := range ranges {
+		value, ok := os.LookupEnv(key)
+		if !ok || value == "" {
+			continue
+		}
+		number, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+		if err != nil || number < bounds[0] || number > bounds[1] {
+			return fmt.Errorf("%s must be an integer between %d and %d", key, bounds[0], bounds[1])
+		}
+	}
+	for _, key := range []string{"ALLOW_CUSTOM_DOWNLOAD_PATH", "ALLOW_DANGEROUS_OPTIONS", "ALLOW_PRIVATE_URLS"} {
+		value, ok := os.LookupEnv(key)
+		if !ok || value == "" {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "1", "true", "yes", "on", "0", "false", "no", "off":
+		default:
+			return fmt.Errorf("%s must be a boolean", key)
+		}
+	}
+	if level := strEnv("LOG_LEVEL", "info"); level != "debug" && level != "info" && level != "warn" && level != "error" {
+		return fmt.Errorf("LOG_LEVEL must be debug, info, warn, or error")
 	}
 	return nil
 }
@@ -132,6 +192,12 @@ func commandRuns(path string, args ...string) bool {
 // executable can be blocked by Windows extraction policies. Fall back to a
 // standalone executable beside the server, then to PATH for normal installs.
 func resolveYtDlpCommand(root string) (string, []string) {
+	for _, relative := range []string{filepath.Join(".venv", "Scripts", "python.exe"), filepath.Join(".venv", "bin", "python")} {
+		path := filepath.Join(root, relative)
+		if info, err := os.Stat(path); err == nil && !info.IsDir() && commandRuns(path, "-m", "yt_dlp", "--version") {
+			return path, []string{"-m", "yt_dlp"}
+		}
+	}
 	for _, name := range []string{"py", "python", "python3"} {
 		path, err := osexec.LookPath(name)
 		if err != nil {

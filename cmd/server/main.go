@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -55,7 +56,12 @@ func main() {
 	eventBus := bus.New()
 	sseGateway := sse.NewGateway(eventBus)
 
-	progressStore := store.NewProgressStore(eventBus)
+	progressStore, err := store.NewPersistentStore(eventBus, filepath.Join(cfg.StateDir, "history.json"))
+	if err != nil {
+		slog.Error("Cannot open download history", "err", err)
+		os.Exit(1)
+	}
+	sseGateway.Snapshots = progressStore.SnapshotAll
 	pool := worker.NewPool(cfg, progressStore)
 
 	// Start worker pool
@@ -110,7 +116,11 @@ func main() {
 	}
 
 	// Stop worker pool
+	app.Close()
 	pool.Stop()
+	if err := progressStore.Close(); err != nil {
+		slog.Error("Cannot save download history", "err", err)
+	}
 	if networkGuard != nil {
 		networkGuard.Close()
 	}
