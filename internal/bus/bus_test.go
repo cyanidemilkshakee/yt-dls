@@ -68,16 +68,21 @@ func TestBus_NonBlockingWhenFull(t *testing.T) {
 		})
 	}
 
-	// Read 100 events
-	for range 100 {
-		<-sub
-	}
-
-	// 101st read should block/timeout because buffer was full and events were dropped
-	select {
-	case <-sub:
-		t.Error("expected no more events (dropped)")
-	case <-time.After(10 * time.Millisecond):
-		// OK
+	resync, latest := false, -1
+	for {
+		select {
+		case event := <-sub:
+			if event.Type == bus.EventResync {
+				resync = true
+			}
+			if value, ok := event.Data.(int); ok {
+				latest = value
+			}
+		default:
+			if !resync || latest != 149 {
+				t.Fatalf("overflow lost resync or latest: resync=%v latest=%d", resync, latest)
+			}
+			return
+		}
 	}
 }

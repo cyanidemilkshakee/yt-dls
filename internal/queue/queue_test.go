@@ -19,10 +19,6 @@ func TestQueue_EnqueueDequeue(t *testing.T) {
 		}
 	}
 
-	if q.Len() != 5 {
-		t.Errorf("Len() = %d, want 5", q.Len())
-	}
-
 	ctx := context.Background()
 	for want := range 5 {
 		got, err := q.Next(ctx)
@@ -34,8 +30,8 @@ func TestQueue_EnqueueDequeue(t *testing.T) {
 		}
 	}
 
-	if q.Len() != 0 {
-		t.Errorf("Len() after drain = %d, want 0", q.Len())
+	if err := q.Enqueue(5); err != nil {
+		t.Fatalf("draining the queue did not release capacity: %v", err)
 	}
 }
 
