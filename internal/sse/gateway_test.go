@@ -1,119 +1,107 @@
 package sse_test
 
 import (
+	"bufio"
 	"context"
-	"net/http"
-	"net/http/httptest"
-	"testing"
-	"time"
-
+	"encoding/json"
 	"github.com/cyanidemilkshakee/yt-dls/internal/bus"
 	"github.com/cyanidemilkshakee/yt-dls/internal/sse"
 	"github.com/cyanidemilkshakee/yt-dls/internal/store"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
 )
 
-func TestGateway_ServeHTTP_Unsupported(t *testing.T) {
-	b := bus.New()
-	gw := sse.NewGateway(b)
+type dummyWriter struct{ status int }
 
-	// A basic ResponseRecorder does not implement http.Flusher
-	// (actually, in newer Go versions httptest.ResponseRecorder DOES implement Flusher,
-	//  so we need a custom dummy writer to test the unsupported path)
-	w := &dummyWriter{}
-	r := httptest.NewRequest(http.MethodGet, "/progress", nil)
-
-	gw.ServeHTTP(w, r)
-
-	if w.status != http.StatusInternalServerError {
-		t.Errorf("status = %d, want 500", w.status)
-	}
-}
-
-type dummyWriter struct {
-	status int
-}
-func (w *dummyWriter) Header() http.Header { return make(http.Header) }
+func (w *dummyWriter) Header() http.Header       { return make(http.Header) }
 func (w *dummyWriter) Write([]byte) (int, error) { return 0, nil }
-func (w *dummyWriter) WriteHeader(statusCode int) { w.status = statusCode }
-
-func TestGateway_Throttling(t *testing.T) {
-	b := bus.New()
-	_ = sse.NewGateway(b)
-
-	// Testing the internal throttling logic requires reading the SSE stream.
-	// We'll spin up an httptest.Server
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// NewGateway per request is weird but OK for this test
-		gw := sse.NewGateway(b)
-		gw.ServeHTTP(w, r)
-	}))
-	defer srv.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL, nil)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("failed to connect: %v", err)
+func (w *dummyWriter) WriteHeader(code int)      { w.status = code }
+func TestUnsupportedStreaming(t *testing.T) {
+	gateway := sse.NewGateway(bus.New())
+	defer gateway.Close()
+	writer := &dummyWriter{}
+	gateway.ServeHTTP(writer, httptest.NewRequest("GET", "/events", nil))
+	if writer.status != 500 {
+		t.Fatal(writer.status)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200", resp.StatusCode)
-	}
-
-	// Read first byte to ensure connection is established (initial heartbeat ":\n\n")
-	buf := make([]byte, 3)
-	_, _ = resp.Body.Read(buf)
-
-	// Send rapid events
-	for i := range 10 {
-		b.Publish(bus.Event{
-			Type:       bus.EventProgress,
-			DownloadID: "dl-1",
-			Data: store.ProgressSnapshot{
-				DownloadID: "dl-1",
-				Progress:   float64(i) * 0.1, // delta < 0.5% (0.1, 0.2, 0.3 ...)
-				Status:     "downloading",
-			},
-		})
-	}
-
-	// Send one with large delta (> 0.5%)
-	b.Publish(bus.Event{
-		Type:       bus.EventProgress,
-		DownloadID: "dl-1",
-		Data: store.ProgressSnapshot{
-			DownloadID: "dl-1",
-			Progress:   1.0, // delta = 0.6 from 0.4, should pass
-			Status:     "downloading",
-		},
-	})
-
-	// Wait a bit to ensure it processes
-	time.Sleep(100 * time.Millisecond)
-
-	// Since we can't easily count non-blocking stream reads cleanly in a short test,
-	// we just rely on the test passing without panic and closing gracefully.
-	// (Full integration testing of SSE is better done at the API level).
 }
 
-func TestGateway_TerminalEventPassesThrough(t *testing.T) {
-	b := bus.New()
-	gw := sse.NewGateway(b)
-	_ = gw
-
-	// A completed event should always bypass throttling and clear the throttle map.
-	b.Publish(bus.Event{
-		Type:       bus.EventProgress,
-		DownloadID: "dl-terminal",
-		Data: store.ProgressSnapshot{
-			DownloadID: "dl-terminal",
-			Progress:   100,
-			Status:     "completed",
-		},
-	})
-
-	time.Sleep(50 * time.Millisecond)
+func TestActualFramesThrottleTerminalVersionAndReconnect(t *testing.T) {
+	events := bus.New()
+	gateway := sse.NewGateway(events)
+	defer gateway.Close()
+	gateway.Snapshots = func() []store.ProgressSnapshot {
+		return []store.ProgressSnapshot{{DownloadID: "restored", Version: 7, Status: "completed"}}
+	}
+	server := httptest.NewServer(gateway)
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "GET", server.URL, nil)
+	response, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	scanner := bufio.NewScanner(response.Body)
+	frames := make(chan map[string]any, 20)
+	go func() {
+		defer close(frames)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "data: ") {
+				var data map[string]any
+				if json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &data) == nil {
+					frames <- data
+				}
+			}
+		}
+	}()
+	receive := func() map[string]any {
+		select {
+		case frame := <-frames:
+			if frame == nil {
+				t.Fatal("stream ended")
+			}
+			return frame
+		case <-time.After(time.Second):
+			t.Fatal("missing SSE frame")
+			return nil
+		}
+	}
+	if frame := receive(); frame["type"] != "snapshot" {
+		t.Fatalf("missing reconnect snapshot: %v", frame)
+	}
+	publish := func(version uint64, progress float64, status string) {
+		events.Publish(bus.Event{Type: bus.EventProgress, DownloadID: "job", Data: store.ProgressSnapshot{DownloadID: "job", Version: version, Progress: progress, Status: status}})
+	}
+	publish(1, 1, "downloading")
+	receive()
+	publish(2, 1.1, "downloading")
+	publish(3, 1.2, "downloading")
+	publish(4, 1.2, "completed")
+	frame := receive()
+	data := frame["data"].(map[string]any)
+	if data["status"] != "completed" || data["version"] != float64(4) {
+		t.Fatalf("throttle lost terminal: %v", frame)
+	}
+	publish(3, 20, "downloading")
+	select {
+	case frame := <-frames:
+		t.Fatalf("stale version delivered: %v", frame)
+	case <-time.After(100 * time.Millisecond):
+	}
+	events.Publish(bus.Event{Type: bus.EventResync})
+	if frame := receive(); frame["type"] != "resync" {
+		t.Fatal("overflow not observable")
+	}
+	gateway.Close()
+	select {
+	case <-frames:
+	case <-time.After(time.Second):
+		t.Fatal("gateway did not close client")
+	}
 }

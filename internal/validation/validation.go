@@ -1,17 +1,23 @@
 // Package validation provides URL and user-input validation helpers.
-// All logic is a direct port of backend/utils/validation.js; behaviour is
-// identical so existing .env configurations and frontend payloads are compatible.
+// The validation API stays compatible with the frontend while network checks
+// share the downloader's public-address policy.
 package validation
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
+	"github.com/cyanidemilkshakee/yt-dls/api"
 	"github.com/cyanidemilkshakee/yt-dls/internal/config"
+	"github.com/cyanidemilkshakee/yt-dls/internal/network"
 )
 
 // ─── Error type ──────────────────────────────────────────────────────────────
@@ -26,65 +32,26 @@ func (e *Error) Error() string { return e.Message }
 
 // ─── IsPrivateIP ─────────────────────────────────────────────────────────────
 
-// IsPrivateIP reports whether addr is a loopback, private, or otherwise
-// reserved IP address. Mirrors isPrivateIp() in validation.js exactly,
-// including the IPv4-mapped IPv6 handling.
+// IsPrivateIP reports whether addr is not a public unicast address, including
+// private, loopback, mapped, link-local, and reserved ranges.
 func IsPrivateIP(addr string) bool {
 	if addr == "" {
 		return true
 	}
-
-	lower := strings.ToLower(addr)
-
-	// IPv6 special cases that net.ParseIP handles as loopback / unspecified
-	// but we also want to catch the full ULA / link-local prefixes.
-	if lower == "::1" || lower == "::" {
-		return true
-	}
-	if strings.HasPrefix(lower, "fe80:") ||
-		strings.HasPrefix(lower, "fc") ||
-		strings.HasPrefix(lower, "fd") {
-		return true
-	}
-
-	// IPv4-mapped IPv6 ::ffff:x.x.x.x  →  check the embedded IPv4 address.
-	if strings.HasPrefix(lower, "::ffff:") {
-		if IsPrivateIP(addr[7:]) {
-			return true
-		}
-	}
-
-	ip := net.ParseIP(addr)
-	if ip == nil {
+	ip, err := netip.ParseAddr(addr)
+	if err != nil {
 		return false // unparseable → let callers decide
 	}
-
-	// Use the IPv4 form when available (mirrors JS behaviour which checks octets).
-	if ip4 := ip.To4(); ip4 != nil {
-		a, b := ip4[0], ip4[1]
-		return a == 0 || // 0.0.0.0/8  — "this" network
-			a == 10 || // 10.0.0.0/8 — private
-			a == 127 || // 127.0.0.0/8 — loopback
-			(a == 169 && b == 254) || // 169.254.0.0/16 — link-local
-			(a == 172 && b >= 16 && b <= 31) || // 172.16.0.0/12 — private
-			(a == 192 && b == 168) || // 192.168.0.0/16 — private
-			a >= 224 // 224.0.0.0/4+ — multicast / reserved
-	}
-
-	// Pure IPv6 fall-through.
-	return ip.IsLoopback() ||
-		ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() ||
-		ip.IsMulticast() ||
-		ip.IsUnspecified()
+	return !network.IsPublicIP(ip)
 }
 
-// ─── ValidateMediaURL ────────────────────────────────────────────────────────
-
-// ValidateMediaURL parses, canonicalises, and (unless AllowPrivateURLs is set)
-// SSRF-guards rawURL by resolving it and rejecting private/reserved targets.
-// Mirrors validateMediaUrl() in validation.js.
-func ValidateMediaURL(rawURL string, cfg *config.Config) (string, error) {
+// ValidateMediaURLContext parses and canonicalises a media URL, rejects private
+// targets unless explicitly allowed, and uses ctx to cancel DNS lookups.
+func ValidateMediaURLContext(ctx context.Context, rawURL string, cfg *config.Config) (string, error) {
+	limit := api.StringLimit("InfoRequest", "url")
+	if len(rawURL) > limit {
+		return "", &Error{fmt.Sprintf("Media URLs must be at most %d bytes.", limit), "URL_TOO_LONG"}
+	}
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
 		return "", &Error{"A media URL is required.", "MISSING_URL"}
@@ -119,12 +86,16 @@ func ValidateMediaURL(rawURL string, cfg *config.Config) (string, error) {
 	if net.ParseIP(host) != nil {
 		addrs = []string{host}
 	} else {
-		addrs, err = net.LookupHost(host)
+		resolved, lookupErr := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+		err = lookupErr
 		if err != nil {
 			return "", &Error{
 				fmt.Sprintf("Could not resolve the media host: %s", err.Error()),
 				"HOST_RESOLUTION_FAILED",
 			}
+		}
+		for _, addr := range resolved {
+			addrs = append(addrs, addr.String())
 		}
 	}
 	if len(addrs) == 0 {
@@ -166,14 +137,55 @@ func ResolveDownloadDirectory(requestedPath string, cfg *config.Config) (string,
 		resolved = filepath.Join(cfg.RootDir, trimmed)
 	}
 	resolved = filepath.Clean(resolved)
+	requestedPathResolved := resolved
 
-	// Confinement check: the resolved path must sit inside (or equal) RootDir.
-	rootClean := filepath.Clean(cfg.RootDir)
-	if resolved != rootClean && !strings.HasPrefix(resolved, rootClean+string(filepath.Separator)) {
+	// Resolve existing symlinks so an in-root symlink cannot redirect writes
+	// outside the configured root.
+	rootClean, err := canonicalPath(cfg.RootDir)
+	if err != nil {
+		return "", &Error{"The configured download root is unavailable.", "INVALID_PATH"}
+	}
+	canonicalResolved, err := canonicalPath(resolved)
+	if err != nil {
+		return "", &Error{"The requested download path is unavailable.", "INVALID_PATH"}
+	}
+	rel, err := filepath.Rel(rootClean, canonicalResolved)
+	if err != nil || filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", &Error{"Path traversal is not allowed.", "INVALID_PATH"}
 	}
 
-	return resolved, nil
+	return requestedPathResolved, nil
+}
+
+// canonicalPath resolves symlinks even when the requested leaf does not yet
+// exist by resolving the nearest existing parent and reattaching missing parts.
+func canonicalPath(path string) (string, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	current := filepath.Clean(absolute)
+	var missing []string
+	for {
+		if _, err := os.Lstat(current); err == nil {
+			resolved, err := filepath.EvalSymlinks(current)
+			if err != nil {
+				return "", err
+			}
+			for i := len(missing) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, missing[i])
+			}
+			return filepath.Clean(resolved), nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", os.ErrNotExist
+		}
+		missing = append(missing, filepath.Base(current))
+		current = parent
+	}
 }
 
 // defaultDirRe matches the placeholder "downloads" path sent by the frontend.

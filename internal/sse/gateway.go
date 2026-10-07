@@ -1,6 +1,7 @@
 package sse
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -46,42 +47,88 @@ func (c *client) send(msg []byte) bool {
 // Gateway manages SSE connections and broadcasts events from the event bus.
 type Gateway struct {
 	eventBus *bus.Bus
+	ctx      context.Context
+	cancel   context.CancelFunc
 
-	mu       sync.Mutex // protects clients and throttle maps
-	clients  map[*client]struct{}
-	throttle map[string]throttleMeta
+	mu        sync.Mutex // protects clients and throttle maps
+	clients   map[*client]struct{}
+	throttle  map[string]throttleMeta
+	closed    bool
+	Snapshots func() []store.ProgressSnapshot
+	versions  map[string]uint64
 }
 
 // NewGateway creates a new SSE gateway listening to the provided event bus.
 func NewGateway(eventBus *bus.Bus) *Gateway {
+	ctx, cancel := context.WithCancel(context.Background())
 	gw := &Gateway{
 		eventBus: eventBus,
+		ctx:      ctx,
+		cancel:   cancel,
 		clients:  make(map[*client]struct{}),
 		throttle: make(map[string]throttleMeta),
+		versions: make(map[string]uint64),
 	}
 
-	go gw.listenLoop()
+	sub := eventBus.Subscribe()
+	go gw.listenLoop(sub)
 	return gw
 }
 
+// Close stops the bus listener and closes all active SSE clients.
+func (gw *Gateway) Close() {
+	gw.cancel()
+	gw.mu.Lock()
+	gw.closed = true
+	clients := make([]*client, 0, len(gw.clients))
+	for c := range gw.clients {
+		delete(gw.clients, c)
+		clients = append(clients, c)
+	}
+	gw.mu.Unlock()
+	for _, c := range clients {
+		c.close()
+	}
+}
+
 // listenLoop reads from the global event bus and broadcasts to all clients.
-func (gw *Gateway) listenLoop() {
-	sub := gw.eventBus.Subscribe()
+func (gw *Gateway) listenLoop(sub bus.Subscriber) {
 	defer gw.eventBus.Unsubscribe(sub)
 
-	for event := range sub {
-		if event.Type == bus.EventProgress {
-			snap, ok := event.Data.(store.ProgressSnapshot)
+	for {
+		select {
+		case <-gw.ctx.Done():
+			return
+		case event, ok := <-sub:
 			if !ok {
-				continue
+				return
 			}
-			gw.handleProgressEvent(snap)
+			if event.Type == bus.EventProgress {
+				snap, ok := event.Data.(store.ProgressSnapshot)
+				if !ok {
+					continue
+				}
+				gw.handleProgressEvent(snap)
+			}
+			if event.Type == bus.EventResync {
+				gw.broadcast([]byte("data: {\"type\":\"resync\"}\n\n"))
+			}
 		}
 	}
 }
 
 func (gw *Gateway) handleProgressEvent(snap store.ProgressSnapshot) {
 	gw.mu.Lock()
+	if snap.Version > 0 {
+		if snap.Version <= gw.versions[snap.DownloadID] {
+			gw.mu.Unlock()
+			return
+		}
+		if len(gw.versions) > 2000 {
+			gw.versions = make(map[string]uint64)
+		}
+		gw.versions[snap.DownloadID] = snap.Version
+	}
 	meta, exists := gw.throttle[snap.DownloadID]
 
 	now := time.Now()
@@ -161,6 +208,11 @@ func (gw *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c := &client{ch: make(chan []byte, 100)}
 
 	gw.mu.Lock()
+	if gw.closed {
+		gw.mu.Unlock()
+		http.Error(w, "Event stream is shutting down", http.StatusServiceUnavailable)
+		return
+	}
 	gw.clients[c] = struct{}{}
 	gw.mu.Unlock()
 
@@ -172,10 +224,15 @@ func (gw *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	// Initial heartbeat to confirm connection
-	if _, err := w.Write([]byte(":\n\n")); err != nil {
+	if !writeFrame(w, flusher, []byte(":\n\n")) {
 		return
 	}
-	flusher.Flush()
+	if gw.Snapshots != nil {
+		data, err := json.Marshal(map[string]any{"type": "snapshot", "downloads": gw.Snapshots()})
+		if err != nil || !writeFrame(w, flusher, append(append([]byte("data: "), data...), []byte("\n\n")...)) {
+			return
+		}
+	}
 
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
@@ -189,15 +246,24 @@ func (gw *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				// Channel was closed by broadcast (zombie eviction)
 				return
 			}
-			if _, err := w.Write(msg); err != nil {
+			if !writeFrame(w, flusher, msg) {
 				return
 			}
-			flusher.Flush()
 		case <-ticker.C:
-			if _, err := w.Write([]byte(":\n\n")); err != nil {
+			if !writeFrame(w, flusher, []byte(":\n\n")) {
 				return
 			}
-			flusher.Flush()
 		}
 	}
+}
+
+func writeFrame(w http.ResponseWriter, flusher http.Flusher, frame []byte) bool {
+	controller := http.NewResponseController(w)
+	_ = controller.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	_, err := w.Write(frame)
+	if err == nil {
+		flusher.Flush()
+	}
+	_ = controller.SetWriteDeadline(time.Time{})
+	return err == nil
 }

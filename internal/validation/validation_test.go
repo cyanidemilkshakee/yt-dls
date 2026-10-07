@@ -1,12 +1,50 @@
 package validation_test
 
 import (
+	"context"
+	"errors"
+	"net"
 	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"testing"
 
+	"github.com/cyanidemilkshakee/yt-dls/api"
 	"github.com/cyanidemilkshakee/yt-dls/internal/config"
 	"github.com/cyanidemilkshakee/yt-dls/internal/validation"
 )
+
+func TestValidateMediaURLRejectsOversizedInputBeforeDNS(t *testing.T) {
+	var resolverCalled atomic.Bool
+	previous := net.DefaultResolver
+	net.DefaultResolver = &net.Resolver{PreferGo: true, Dial: func(context.Context, string, string) (net.Conn, error) {
+		resolverCalled.Store(true)
+		return nil, errors.New("URL validation must not reach DNS")
+	}}
+	t.Cleanup(func() { net.DefaultResolver = previous })
+	limit := api.StringLimit("InfoRequest", "url")
+	prefix := "https://lookup-must-not-run.invalid/"
+	for _, source := range []string{
+		prefix + strings.Repeat("x", limit-len(prefix)+1),
+		prefix + strings.Repeat("é", limit/2),
+	} {
+		_, err := validation.ValidateMediaURLContext(context.Background(), source, &config.Config{})
+		var invalid *validation.Error
+		if !errors.As(err, &invalid) || invalid.Code != "URL_TOO_LONG" {
+			t.Fatalf("oversized %d-byte URL accepted or resolved: %v", len(source), err)
+		}
+	}
+	if resolverCalled.Load() {
+		t.Fatal("oversized input invoked DNS")
+	}
+	// The exact advertised byte boundary remains valid. A public IP keeps
+	// this positive case offline without bypassing the network policy.
+	prefix = "https://8.8.8.8/"
+	source := prefix + strings.Repeat("x", limit-len(prefix))
+	if normalized, err := validation.ValidateMediaURLContext(context.Background(), source, &config.Config{}); err != nil || normalized != source {
+		t.Fatalf("valid boundary URL rejected: %v", err)
+	}
+}
 
 // ─── IsPrivateIP ─────────────────────────────────────────────────────────────
 
@@ -234,7 +272,7 @@ func TestValidateMediaURL_syntax(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		_, err := validation.ValidateMediaURL(tc.url, cfg)
+		_, err := validation.ValidateMediaURLContext(context.Background(), tc.url, cfg)
 		if (err != nil) != tc.wantErr {
 			t.Errorf("ValidateMediaURL(%q): err=%v, wantErr=%v", tc.url, err, tc.wantErr)
 			continue
@@ -256,7 +294,7 @@ func TestValidateMediaURL_privateBlocked(t *testing.T) {
 	// Without AllowPrivateURLs, localhost must be rejected without DNS.
 	cfg := &config.Config{AllowPrivateURLs: false}
 
-	_, err := validation.ValidateMediaURL("http://localhost/video", cfg)
+	_, err := validation.ValidateMediaURLContext(context.Background(), "http://localhost/video", cfg)
 	if err == nil {
 		t.Error("expected error for localhost URL")
 	}
