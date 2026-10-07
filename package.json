@@ -1,19 +1,33 @@
 {
   "name": "yt-dl-studio",
-  "version": "1.0.0",
-  "description": "A modern GUI for yt-dlp — Go backend + React frontend",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Local yt-dlp download studio with a Go server and React interface",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
-    "predev:backend": "node scripts/kill-port.mjs 7391",
+    "setup": "npm ci && npm ci --prefix web",
+    "setup:runtime": "node scripts/setup-runtime.mjs",
+    "predev": "npm run build:frontend",
     "dev:backend": "node scripts/dev-backend.mjs",
     "dev:frontend": "npm run dev --prefix web",
     "dev": "concurrently --kill-others -n backend,frontend -c magenta,cyan \"npm run dev:backend\" \"npm run dev:frontend\"",
     "build:frontend": "npm run build --prefix web",
-    "build": "npm run build:frontend && go build -o yt-dls.exe ./cmd/server",
-    "start": "go run ./cmd/server",
-    "test": "go test ./..."
+    "build": "node scripts/build.mjs",
+    "build:all": "node scripts/build.mjs --all",
+    "start": "npm run build:frontend && go run ./command/server",
+    "lint": "npm run lint --prefix web && go vet ./...",
+    "test": "npm run api:check && npm run build:frontend && npm test --prefix web && go test -timeout 90s ./...",
+    "test:race": "npm run build:frontend && go test -race -timeout 120s ./...",
+    "check": "npm test && npm run lint && npm audit --omit=dev && npm audit --prefix web --omit=dev",
+    "api:generate": "node scripts/api-contract.mjs",
+    "api:check": "node scripts/api-contract.mjs --check",
+    "test:browser": "npm run build:frontend && playwright test"
   },
   "devDependencies": {
-    "concurrently": "^9.0.0",
-    "cross-env": "^7.0.3"
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.63.0",
+    "concurrently": "^10.0.5"
   }
 }
