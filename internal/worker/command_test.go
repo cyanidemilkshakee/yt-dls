@@ -1,7 +1,6 @@
 package worker_test
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/cyanidemilkshakee/yt-dls/internal/config"
@@ -79,6 +78,7 @@ func TestBuildCommand_minimal(t *testing.T) {
 
 	// Progress template flags must be present
 	assertContains(t, res.Command, "--newline")
+	assertContains(t, res.Command, "--ignore-config")
 	assertContains(t, res.Command, "--progress-template")
 	assertConsecutive(t, res.Command, "--progress-template", worker.ProgressTemplate)
 
@@ -175,8 +175,8 @@ func TestBuildCommand_subtitlesAll(t *testing.T) {
 	}
 	res := buildOK(t, opts, "/dl", testCfg(false))
 	assertContains(t, res.Command, "--write-subs")
-	// "all" → no --sub-langs flag
-	assertNotContains(t, res.Command, "--sub-langs")
+	// "all" must be passed explicitly so yt-dlp does not use its default language.
+	assertConsecutive(t, res.Command, "--sub-langs", "all")
 }
 
 // ─── Audio extraction ────────────────────────────────────────────────────────
@@ -322,9 +322,7 @@ func TestBuildCommand_resultMetadata(t *testing.T) {
 	if res.DownloadDirectory != "/custom/dir" {
 		t.Errorf("DownloadDirectory = %q, want /custom/dir", res.DownloadDirectory)
 	}
-	if !strings.HasSuffix(res.FilenameTemplate, ".%(ext)s") {
-		t.Errorf("FilenameTemplate = %q, expected suffix .%%(ext)s", res.FilenameTemplate)
-	}
+	assertConsecutive(t, res.Command, "-o", "%(uploader)s - %(title)s.%(ext)s")
 }
 
 // ─── Extractor options ───────────────────────────────────────────────────────

@@ -1,18 +1,16 @@
-// Package worker — command.go
-//
-// Builds the yt-dlp argv slice from typed download options.
-// This is a direct, line-for-line port of backend/services/commandBuilder.js.
-// All flag names, option lists, validation rules, and secret-redaction logic
-// match the original exactly so the frontend payload format is unchanged.
+// Package worker builds and runs yt-dlp commands from typed download options.
 package worker
 
 import (
 	"fmt"
+	"github.com/cyanidemilkshakee/yt-dls/api"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/cyanidemilkshakee/yt-dls/internal/config"
+	"github.com/cyanidemilkshakee/yt-dls/internal/privacy"
 	"github.com/cyanidemilkshakee/yt-dls/internal/validation"
 )
 
@@ -22,17 +20,19 @@ import (
 // a fallback is provided; that would make the whole line invalid JSON and
 // silently drop every progress update. Numeric fallbacks therefore use zero,
 // while codec/string fields use values that preserve their meaning.
-const ProgressTemplate = `download:{"status":%(progress.status)j,"downloaded_bytes":%(progress.downloaded_bytes|0)j,"total_bytes":%(progress.total_bytes|0)j,"total_bytes_estimate":%(progress.total_bytes_estimate|0)j,"speed":%(progress.speed|0)j,"eta":%(progress.eta|0)j,"fragment_index":%(progress.fragment_index|0)j,"fragment_count":%(progress.fragment_count|0)j,"filename":%(progress.filename,info.filepath|)j,"vcodec":%(info.vcodec|none)j,"acodec":%(info.acodec|none)j,"format_id":%(info.format_id|)j}`
+const ProgressTemplate = `download:{"status":%(progress.status)j,"downloaded_bytes":%(progress.downloaded_bytes|0)j,"total_bytes":%(progress.total_bytes|0)j,"total_bytes_estimate":%(progress.total_bytes_estimate|0)j,"speed":%(progress.speed|0)j,"eta":%(progress.eta|0)j,"fragment_index":%(progress.fragment_index|0)j,"fragment_count":%(progress.fragment_count|0)j,"filename":%(progress.filename,info.filepath|"")j,"vcodec":%(info.vcodec|"none")j,"acodec":%(info.acodec|"none")j,"format_id":%(info.format_id|"")j,"media_id":%(info.id|"")j}`
 
-// Allowed value sets — mirrors the JS constants.
+const finalPathPrefix = "YT_DLS_FINAL_PATH:"
+
+// Allowed yt-dlp option values.
 var (
-	mergeFormats    = []string{"avi", "flv", "mkv", "mov", "mp4", "webm"}
-	audioFormats    = []string{"aac", "alac", "flac", "m4a", "mp3", "opus", "vorbis", "wav"}
-	videoFormats    = []string{"avi", "flv", "gif", "mkv", "mov", "mp4", "webm"}
-	subtitleFormats = []string{"ass", "lrc", "srt", "vtt"}
-	concatPolicies  = []string{"never", "always", "multi_video"}
-	fixupPolicies   = []string{"never", "warn", "detect_or_warn", "force"}
-	thumbFormats    = []string{"jpg", "png", "webp"}
+	mergeFormats    = api.Values("mergeFormats")
+	audioFormats    = api.Values("audioFormats")
+	videoFormats    = api.Values("videoFormats")
+	subtitleFormats = api.Values("subtitleFormats")
+	concatPolicies  = api.Values("concatPolicies")
+	fixupPolicies   = api.Values("fixupPolicies")
+	thumbFormats    = api.Values("thumbFormats")
 
 	// secretFlags are the yt-dlp flags whose next argument must be redacted in logs.
 	secretFlags = map[string]bool{
@@ -41,6 +41,8 @@ var (
 		"--video-password":              true,
 		"--ap-password":                 true,
 		"--client-certificate-password": true,
+		"--proxy":                       true,
+		"--geo-verification-proxy":      true,
 	}
 )
 
@@ -89,11 +91,13 @@ type AdvancedSettings struct {
 }
 
 // DownloadOptions mirrors the JSON request body sent by the frontend on
-// POST /api/download and POST /api/command-preview.
+// POST /api/download and POST /api/download/command-preview.
 type DownloadOptions struct {
 	URL                  string           `json:"url"`
 	Thumbnail            string           `json:"thumbnail"`
 	FormatCode           string           `json:"formatCode"`
+	VideoMultistreams    bool             `json:"videoMultistreams"`
+	AudioMultistreams    bool             `json:"audioMultistreams"`
 	Filename             string           `json:"filename"`
 	OutputFormat         string           `json:"outputFormat"`
 	Overwrite            bool             `json:"overwrite"`
@@ -124,6 +128,7 @@ type DownloadOptions struct {
 	SplitChapters        bool             `json:"splitChapters"`
 	ForceKeyframes       bool             `json:"forceKeyframes"`
 	ConcatPlaylist       string           `json:"concatPlaylist"`
+	PlaylistItems        []int            `json:"playlistItems"`
 	Fixup                string           `json:"fixup"`
 	AdvancedSettings     AdvancedSettings `json:"advancedSettings"`
 }
@@ -131,7 +136,6 @@ type DownloadOptions struct {
 // BuildResult holds the built argv and related metadata.
 type BuildResult struct {
 	Command           []string
-	FilenameTemplate  string
 	DownloadDirectory string
 }
 
@@ -139,12 +143,49 @@ type BuildResult struct {
 
 // BuildCommand constructs the yt-dlp argv from opts.
 // downloadDirectory must already be resolved via validation.ResolveDownloadDirectory.
-// Mirrors buildYtDlpCommand() in commandBuilder.js exactly.
 func BuildCommand(opts DownloadOptions, downloadDirectory string, cfg *config.Config) (BuildResult, error) {
+	if err := validateStrings(opts); err != nil {
+		return BuildResult{}, err
+	}
+	if _, err := validation.OneOf(opts.DownloadMode, api.Values("downloadModes"), "download mode"); err != nil {
+		return BuildResult{}, err
+	}
+	if opts.DownloadMode == "audio" {
+		opts.ExtractAudio = true
+	}
+	if opts.DownloadMode == "video" && opts.ExtractAudio {
+		return BuildResult{}, fmt.Errorf("video mode cannot extract audio")
+	}
+	if opts.RemuxVideo != "" && opts.RecodeVideo != "" {
+		return BuildResult{}, fmt.Errorf("choose remux or recode, not both")
+	}
 	b := &builder{cfg: cfg}
 	command := append([]string{cfg.YtDlpPath}, cfg.YtDlpArgs...)
-	command = append(command, "--newline", "--progress-template", ProgressTemplate)
+	command = append(command, "--ignore-config", "--newline", "--progress", "--progress-template", ProgressTemplate, "--print", "after_move:"+finalPathPrefix+"%(filepath)j")
+	if cfg.NetworkProxy != "" {
+		command = append(command, "--proxy", cfg.NetworkProxy)
+	}
 	b.add(command...)
+	if len(opts.PlaylistItems) > 500 {
+		return BuildResult{}, fmt.Errorf("choose at most 500 playlist items")
+	}
+	if len(opts.PlaylistItems) > 0 {
+		items := make([]string, 0, len(opts.PlaylistItems))
+		previous := 0
+		for _, index := range opts.PlaylistItems {
+			if index <= previous || index > 100000 {
+				return BuildResult{}, fmt.Errorf("playlist indexes must be unique, ascending integers between 1 and 100000")
+			}
+			items = append(items, strconv.Itoa(index))
+			previous = index
+		}
+		b.add("--yes-playlist", "--playlist-items", strings.Join(items, ","))
+	} else {
+		if opts.ConcatPlaylist == "always" || opts.ConcatPlaylist == "multi_video" {
+			return BuildResult{}, fmt.Errorf("select explicit playlist indexes before concatenating")
+		}
+		b.add("--no-playlist")
+	}
 	if cfg.YtDlpJSRuntime != "" {
 		b.add("--js-runtimes", cfg.YtDlpJSRuntime)
 	}
@@ -155,13 +196,25 @@ func BuildCommand(opts DownloadOptions, downloadDirectory string, cfg *config.Co
 		return BuildResult{}, err
 	}
 	b.add("-f", fs)
+	if opts.VideoMultistreams {
+		b.add("--video-multistreams")
+	}
+	if opts.AudioMultistreams {
+		b.add("--audio-multistreams")
+	}
 
 	// ── Filename template ────────────────────────────────────────────────────
 	filenameTpl, err := validation.ValidateFilenameTemplate(opts.Filename)
 	if err != nil {
 		return BuildResult{}, err
 	}
-	b.add("-o", filenameTpl, "-P", downloadDirectory)
+	if opts.ConcatPlaylist == "always" || opts.ConcatPlaylist == "multi_video" {
+		// Keep each source distinct even when the requested joined filename is
+		// literal. The playlist output uses the user's template separately.
+		b.add("-o", "%(playlist_index)05d_%(id)s_"+filenameTpl, "-o", "pl_video:"+filenameTpl, "-P", downloadDirectory)
+	} else {
+		b.add("-o", filenameTpl, "-P", downloadDirectory)
+	}
 
 	// ── Merge output format ──────────────────────────────────────────────────
 	outputFmt, err := validation.OneOf(opts.OutputFormat, mergeFormats, "merge output format")
@@ -170,6 +223,11 @@ func BuildCommand(opts DownloadOptions, downloadDirectory string, cfg *config.Co
 	}
 	if outputFmt != "" {
 		b.add("--merge-output-format", outputFmt)
+		// A combined source skips the merger. Remux it too so the requested
+		// container is respected regardless of the extractor's format layout.
+		if opts.RemuxVideo == "" && opts.RecodeVideo == "" && !opts.ExtractAudio {
+			b.add("--remux-video", outputFmt)
+		}
 	}
 
 	// ── Overwrite ────────────────────────────────────────────────────────────
@@ -178,15 +236,20 @@ func BuildCommand(opts DownloadOptions, downloadDirectory string, cfg *config.Co
 	} else {
 		b.add("--no-overwrites")
 	}
+	if opts.PostOverwrites != nil {
+		if *opts.PostOverwrites {
+			b.add("--post-overwrites")
+		} else {
+			b.add("--no-post-overwrites")
+		}
+	}
 
 	// ── Subtitles ────────────────────────────────────────────────────────────
 	if opts.EnableSubtitles {
 		subLang := strOpt(opts.SubtitleLang, 100)
 		if subLang != "" && subLang != "none" {
 			b.add("--write-subs", "--write-auto-subs")
-			if subLang != "all" {
-				b.add("--sub-langs", subLang)
-			}
+			b.add("--sub-langs", subLang)
 			if opts.EmbedSubs {
 				b.add("--embed-subs")
 			}
@@ -249,7 +312,7 @@ func BuildCommand(opts DownloadOptions, downloadDirectory string, cfg *config.Co
 	}
 
 	// ── Post-processing ──────────────────────────────────────────────────────
-	if opts.EnablePostprocessing || opts.ExtractAudio {
+	if opts.EnablePostprocessing || opts.ExtractAudio || opts.RemuxVideo != "" || opts.RecodeVideo != "" || opts.ConvertThumb != "" || opts.KeepVideo || opts.PostprocessorArgs != "" {
 		if opts.ExtractAudio {
 			b.add("--extract-audio")
 
@@ -295,7 +358,7 @@ func BuildCommand(opts DownloadOptions, downloadDirectory string, cfg *config.Co
 			return BuildResult{}, err
 		}
 		if thumb != "" {
-			b.add("--convert-thumbnails", thumb)
+			b.add("--write-thumbnail", "--convert-thumbnails", thumb)
 		}
 
 		if ppArgs := strOpt(opts.PostprocessorArgs, 1000); ppArgs != "" {
@@ -308,9 +371,7 @@ func BuildCommand(opts DownloadOptions, downloadDirectory string, cfg *config.Co
 			b.add("--keep-video")
 		}
 
-		if opts.PostOverwrites != nil && !*opts.PostOverwrites {
-			b.add("--no-post-overwrites")
-		} else {
+		if opts.PostOverwrites == nil {
 			b.add("--post-overwrites")
 		}
 	}
@@ -343,6 +404,9 @@ func BuildCommand(opts DownloadOptions, downloadDirectory string, cfg *config.Co
 	adv := opts.AdvancedSettings
 
 	if proxy := strOpt(adv.Proxy, 500); proxy != "" {
+		if cfg.NetworkProxy != "" {
+			return BuildResult{}, &validation.Error{Message: "A custom proxy cannot be used while the outbound network guard is enabled.", Code: "NETWORK_POLICY_CONFLICT"}
+		}
 		b.add("--proxy", proxy)
 	}
 	if adv.SocketTimeout != nil {
@@ -359,6 +423,9 @@ func BuildCommand(opts DownloadOptions, downloadDirectory string, cfg *config.Co
 		b.add("--source-address", sa)
 	}
 	if gp := strOpt(adv.GeoVerificationProxy, 500); gp != "" {
+		if cfg.NetworkProxy != "" {
+			return BuildResult{}, &validation.Error{Message: "A geo-verification proxy cannot be used while the outbound network guard is enabled.", Code: "NETWORK_POLICY_CONFLICT"}
+		}
 		b.add("--geo-verification-proxy", gp)
 	}
 	if xff := strOpt(adv.Xff, 100); xff != "" {
@@ -517,9 +584,106 @@ func BuildCommand(opts DownloadOptions, downloadDirectory string, cfg *config.Co
 
 	return BuildResult{
 		Command:           b.cmd,
-		FilenameTemplate:  filenameTpl,
 		DownloadDirectory: downloadDirectory,
 	}, nil
+}
+
+// BuildMetadataArgs returns the supported authentication and extraction flags
+// used by /info. It intentionally shares validation and dangerous-option
+// policy with downloads so metadata inspection can access the same account-
+// gated content without accepting arbitrary command-line arguments.
+func BuildMetadataArgs(adv AdvancedSettings, cfg *config.Config) ([]string, error) {
+	if err := validateStrings(adv); err != nil {
+		return nil, err
+	}
+	if adv.ForceIPv4 && adv.ForceIPv6 {
+		return nil, fmt.Errorf("choose IPv4 or IPv6, not both")
+	}
+	b := &builder{cfg: cfg}
+
+	if proxy := strOpt(adv.Proxy, 500); proxy != "" {
+		if cfg.NetworkProxy != "" {
+			return nil, &validation.Error{Message: "A custom proxy cannot be used while the outbound network guard is enabled.", Code: "NETWORK_POLICY_CONFLICT"}
+		}
+		b.add("--proxy", proxy)
+	} else if cfg.NetworkProxy != "" {
+		b.add("--proxy", cfg.NetworkProxy)
+	}
+	if adv.SocketTimeout != nil {
+		if *adv.SocketTimeout < 1 || *adv.SocketTimeout > 3600 {
+			return nil, &validation.Error{Message: "socket timeout must be between 1 and 3600.", Code: "INVALID_OPTION"}
+		}
+		b.add("--socket-timeout", strconv.Itoa(*adv.SocketTimeout))
+	}
+	if value := strOpt(adv.SourceAddress, 100); value != "" {
+		b.add("--source-address", value)
+	}
+	if value := strOpt(adv.GeoVerificationProxy, 500); value != "" {
+		if cfg.NetworkProxy != "" {
+			return nil, &validation.Error{Message: "A geo-verification proxy cannot be used while the outbound network guard is enabled.", Code: "NETWORK_POLICY_CONFLICT"}
+		}
+		b.add("--geo-verification-proxy", value)
+	}
+	if value := strOpt(adv.Xff, 100); value != "" {
+		b.add("--xff", value)
+	}
+	if value := strOpt(adv.Impersonate, 100); value != "" {
+		b.add("--impersonate", value)
+	}
+	if adv.ForceIPv4 {
+		b.add("--force-ipv4")
+	}
+	if adv.ForceIPv6 {
+		b.add("--force-ipv6")
+	}
+
+	for _, pair := range []struct{ value, flag string }{
+		{adv.Username, "--username"},
+		{adv.Password, "--password"},
+		{adv.TwoFactor, "--twofactor"},
+		{adv.VideoPassword, "--video-password"},
+		{adv.ApMso, "--ap-mso"},
+		{adv.ApUsername, "--ap-username"},
+		{adv.ApPassword, "--ap-password"},
+	} {
+		if value := strOpt(pair.value, 1000); value != "" {
+			b.add(pair.flag, value)
+		}
+	}
+
+	if adv.Netrc {
+		if err := b.dangerousFlag("--netrc", "Reading .netrc credentials"); err != nil {
+			return nil, err
+		}
+	}
+	for _, option := range []struct{ value, flag, label string }{
+		{adv.NetrcLocation, "--netrc-location", "Custom .netrc files"},
+		{adv.NetrcCmd, "--netrc-cmd", "netrc commands"},
+		{adv.Cookies, "--cookies", "Cookies file"},
+		{adv.CookiesFromBrowser, "--cookies-from-browser", "Cookies from browser"},
+		{adv.ClientCertificate, "--client-certificate", "Client certificate files"},
+		{adv.ClientCertificateKey, "--client-certificate-key", "Client certificate key files"},
+	} {
+		if value := strOpt(option.value, 1000); value != "" {
+			if err := b.dangerous(option.flag, value, option.label); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if value := strOpt(adv.ClientCertPassword, 1000); value != "" {
+		b.add("--client-certificate-password", value)
+	}
+	if adv.ExtractorRetries != nil {
+		if *adv.ExtractorRetries < 0 || *adv.ExtractorRetries > 100 {
+			return nil, &validation.Error{Message: "extractor retries must be between 0 and 100.", Code: "INVALID_OPTION"}
+		}
+		b.add("--extractor-retries", strconv.Itoa(*adv.ExtractorRetries))
+	}
+	if value := strOpt(adv.ExtractorArgs, 1000); value != "" {
+		b.add("--extractor-args", value)
+	}
+
+	return b.cmd, nil
 }
 
 // ─── RedactCommand ────────────────────────────────────────────────────────────
@@ -532,6 +696,8 @@ func RedactCommand(cmd []string) []string {
 	for i := 1; i < len(out); i++ {
 		if secretFlags[out[i-1]] {
 			out[i] = "[REDACTED]"
+		} else {
+			out[i] = privacy.Text(out[i])
 		}
 	}
 	return out
@@ -650,12 +816,38 @@ var audioQualityRe = regexp.MustCompile(`^(?:10|[0-9])$|^\d{2,4}(?:[kK])?$`)
 // strOpt trims value and returns "" if it is empty, contains null bytes, or
 // exceeds maxLen. Safe to use inline — never returns an error.
 // Mirrors stringOption() for the common "skip if missing" case.
+// validateStrings runs before building either command so invalid strings can
+// never be silently omitted (especially credentials). Limits match argv fields.
+func validateStrings(options any) error {
+	v := reflect.ValueOf(options)
+	t := v.Type()
+	for i := 0; i < v.NumField(); i++ {
+		field := v.Field(i)
+		if field.Kind() == reflect.Struct {
+			if err := validateStrings(field.Interface()); err != nil {
+				return err
+			}
+			continue
+		}
+		if field.Kind() != reflect.String {
+			continue
+		}
+		name := strings.Split(t.Field(i).Tag.Get("json"), ",")[0]
+		limit := api.StringLimit(t.Name(), name)
+		value := field.String()
+		if strings.ContainsRune(value, 0) || len(value) > limit {
+			return fmt.Errorf("%s must contain no NUL bytes and be at most %d bytes", name, limit)
+		}
+	}
+	return nil
+}
+
 func strOpt(value string, maxLen int) string {
 	v := strings.TrimSpace(value)
 	if v == "" || strings.ContainsRune(v, 0) || len(v) > maxLen {
 		return ""
 	}
-	return v
+	return value
 }
 
 // splitArgs tokenises a shell-like string honouring double and single quotes.
@@ -665,13 +857,14 @@ func splitArgs(value string, maxLen int) ([]string, error) {
 	if v == "" {
 		return nil, nil
 	}
-	return shellSplit(v), nil
+	return shellSplit(v)
 }
 
 // shellSplit is a minimal POSIX-shell-word splitter.
-func shellSplit(s string) []string {
+func shellSplit(s string) ([]string, error) {
 	var tokens []string
 	var cur strings.Builder
+	started := false
 	inDouble, inSingle := false, false
 
 	for i := 0; i < len(s); i++ {
@@ -679,19 +872,26 @@ func shellSplit(s string) []string {
 		switch {
 		case c == '"' && !inSingle:
 			inDouble = !inDouble
+			started = true
 		case c == '\'' && !inDouble:
 			inSingle = !inSingle
+			started = true
 		case (c == ' ' || c == '\t') && !inDouble && !inSingle:
-			if cur.Len() > 0 {
+			if started {
 				tokens = append(tokens, cur.String())
 				cur.Reset()
+				started = false
 			}
 		default:
 			cur.WriteByte(c)
+			started = true
 		}
 	}
-	if cur.Len() > 0 {
+	if inDouble || inSingle {
+		return nil, &validation.Error{Message: "Replace-in-metadata contains an unclosed quote.", Code: "INVALID_OPTION"}
+	}
+	if started {
 		tokens = append(tokens, cur.String())
 	}
-	return tokens
+	return tokens, nil
 }
