@@ -2,14 +2,20 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"math"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/cyanidemilkshakee/yt-dls/internal/bus"
+	"github.com/cyanidemilkshakee/yt-dls/internal/privacy"
 )
 
 type StreamProgress struct {
+	ID              string  `json:"id,omitempty"`
+	Kind            string  `json:"kind,omitempty"`
 	Expected        bool    `json:"expected"`
 	Combined        bool    `json:"combined"`
 	Status          string  `json:"status"`
@@ -23,21 +29,29 @@ type StreamProgress struct {
 // ProgressSnapshot is a thread-safe snapshot of the current progress state,
 // suitable for JSON serialization and sending to SSE clients.
 type ProgressSnapshot struct {
-	DownloadID      string         `json:"download_id"`
-	URL             string         `json:"url,omitempty"`
-	Thumbnail       string         `json:"thumbnail,omitempty"`
-	Status          string         `json:"status"`
-	Progress        float64        `json:"progress"`
-	Speed           float64        `json:"speed"`
-	ETA             *int64         `json:"eta"`
-	DownloadedBytes int64          `json:"downloaded_bytes"`
-	TotalBytes      int64          `json:"total_bytes"`
-	Filename        *string        `json:"filename"`
-	Error           *string        `json:"error"`
-	StartedAt       *time.Time     `json:"started_at,omitempty"`
-	CompletedAt     *time.Time     `json:"completed_at,omitempty"`
-	VideoProgress   StreamProgress `json:"video_progress"`
-	AudioProgress   StreamProgress `json:"audio_progress"`
+	Version         uint64                    `json:"version"`
+	QueuedAt        *time.Time                `json:"queued_at,omitempty"`
+	Streams         map[string]StreamProgress `json:"streams,omitempty"`
+	Files           []ResultFile              `json:"files,omitempty"`
+	Kind            string                    `json:"kind,omitempty"`
+	Children        []string                  `json:"children,omitempty"`
+	Batch           *BatchProgress            `json:"batch,omitempty"`
+	RetryNeedsURL   bool                      `json:"retry_needs_url,omitempty"`
+	DownloadID      string                    `json:"download_id"`
+	URL             string                    `json:"url,omitempty"`
+	Thumbnail       string                    `json:"thumbnail,omitempty"`
+	Status          string                    `json:"status"`
+	Progress        float64                   `json:"progress"`
+	Speed           float64                   `json:"speed"`
+	ETA             *int64                    `json:"eta"`
+	DownloadedBytes int64                     `json:"downloaded_bytes"`
+	TotalBytes      int64                     `json:"total_bytes"`
+	Filename        *string                   `json:"filename"`
+	Error           *string                   `json:"error"`
+	StartedAt       *time.Time                `json:"started_at,omitempty"`
+	CompletedAt     *time.Time                `json:"completed_at,omitempty"`
+	VideoProgress   StreamProgress            `json:"video_progress"`
+	AudioProgress   StreamProgress            `json:"audio_progress"`
 }
 
 // noCopy is a zero-size sentinel that prevents DownloadProgress from being
@@ -49,8 +63,23 @@ func (*noCopy) Unlock() {}
 
 // DownloadProgress represents the mutable state of a download.
 type DownloadProgress struct {
-	_noCopy noCopy // go vet guard against value-copy
-	mu      sync.RWMutex
+	// FilesMu excludes cleanup/history removal while a worker or file response owns this directory.
+	FilesMu         sync.RWMutex
+	_noCopy         noCopy // go vet guard against value-copy
+	mu              sync.RWMutex
+	notifyMu        sync.Mutex
+	Version         uint64
+	QueuedAt        *time.Time
+	Streams         map[string]StreamProgress
+	Files           []ResultFile
+	Paths           []string
+	OutputDirectory string
+	RetryOptions    json.RawMessage
+	RetryNeedsURL   bool
+	Kind            string
+	Children        []string
+	Batch           *BatchProgress
+	Secrets         []string
 
 	DownloadID      string
 	URL             string
@@ -85,6 +114,7 @@ func NewDownloadProgress(downloadID string, expectedVideo, expectedAudio bool) *
 		DownloadID: downloadID,
 		Status:     "initializing",
 		StartedAt:  &now,
+		QueuedAt:   &now,
 		Log:        make([]string, 0, 200),
 		ctx:        ctx,
 		cancel:     cancel,
@@ -118,16 +148,27 @@ func (dp *DownloadProgress) Cancel() {
 }
 
 const maxLogLines = 200
+const maxLogBytes = 64 << 10
 
 // AddLogLocked appends a log line WITHOUT acquiring the lock.
 // It MUST only be called when the caller already holds dp.mu (i.e. inside an Update callback).
 // FIX: previous implementation used copy+truncate which left a duplicate of the
 // last entry. Now we drop the oldest line first, then append.
 func (dp *DownloadProgress) AddLogLocked(msg string) {
-	if len(dp.Log) >= maxLogLines {
-		dp.Log = dp.Log[1:] // drop oldest
+	msg = privacy.Text(msg, dp.Secrets...)
+	if len(msg) > 4096 {
+		msg = strings.ToValidUTF8(msg[:4096], "") + "… [truncated]"
 	}
 	dp.Log = append(dp.Log, msg)
+	bytes := 0
+	for _, line := range dp.Log {
+		bytes += len(line)
+	}
+	for len(dp.Log) > maxLogLines || bytes > maxLogBytes {
+		bytes -= len(dp.Log[0])
+		dp.Log[0] = ""
+		dp.Log = dp.Log[1:]
+	}
 }
 
 // AddLog safely appends a log line (acquires the write-lock).
@@ -171,6 +212,8 @@ func (dp *DownloadProgress) Snapshot() ProgressSnapshot {
 // snapshotLocked creates a snapshot while the lock is already held.
 func (dp *DownloadProgress) snapshotLocked() ProgressSnapshot {
 	snap := ProgressSnapshot{
+		Version: dp.Version, QueuedAt: dp.QueuedAt, Kind: dp.Kind, RetryNeedsURL: dp.RetryNeedsURL,
+		Files: append([]ResultFile(nil), dp.Files...), Children: append([]string(nil), dp.Children...),
 		DownloadID:      dp.DownloadID,
 		URL:             dp.URL,
 		Thumbnail:       dp.Thumbnail,
@@ -187,6 +230,16 @@ func (dp *DownloadProgress) snapshotLocked() ProgressSnapshot {
 		VideoProgress:   dp.VideoProgress,
 		AudioProgress:   dp.AudioProgress,
 	}
+	if dp.Batch != nil {
+		batch := *dp.Batch
+		snap.Batch = &batch
+	}
+	if len(dp.Streams) > 0 {
+		snap.Streams = make(map[string]StreamProgress, len(dp.Streams))
+		for id, s := range dp.Streams {
+			snap.Streams[id] = s
+		}
+	}
 
 	snap.VideoProgress.Progress = clamp(snap.VideoProgress.Progress)
 	snap.AudioProgress.Progress = clamp(snap.AudioProgress.Progress)
@@ -197,8 +250,17 @@ func (dp *DownloadProgress) snapshotLocked() ProgressSnapshot {
 // Update mutates the progress based on a callback. The callback runs while
 // the write-lock is held, so it MUST use AddLogLocked (not AddLog) for logging.
 func (dp *DownloadProgress) Update(fn func(dp *DownloadProgress)) {
+	// Serialize mutation and notification together so subscribers never receive
+	// an older snapshot after a newer snapshot of the same job.
+	dp.notifyMu.Lock()
+	defer dp.notifyMu.Unlock()
 	dp.mu.Lock()
 	fn(dp)
+	if dp.Error != nil {
+		value := privacy.Text(*dp.Error, dp.Secrets...)
+		dp.Error = &value
+	}
+	dp.Version++
 	snap := dp.snapshotLocked()
 	dp.mu.Unlock()
 
@@ -210,6 +272,41 @@ func (dp *DownloadProgress) Update(fn func(dp *DownloadProgress)) {
 // RecalculateAggregate recalculates top-level progress from streams.
 // Must be called inside an Update block.
 func (dp *DownloadProgress) RecalculateAggregate() {
+	if len(dp.Streams) > 0 {
+		var total, downloaded int64
+		var progress float64
+		allKnown, video, audio := true, false, false
+		for _, stream := range dp.Streams {
+			total += stream.TotalBytes
+			downloaded += stream.DownloadedBytes
+			progress += stream.Progress
+			if stream.TotalBytes <= 0 {
+				allKnown = false
+			}
+			if stream.Kind == "video" || stream.Kind == "combined" {
+				video = true
+			}
+			if stream.Kind == "audio" || stream.Kind == "combined" {
+				audio = true
+			}
+		}
+		dp.TotalBytes, dp.DownloadedBytes = total, downloaded
+		count := len(dp.Streams)
+		if dp.VideoProgress.Expected && !video {
+			count++
+			allKnown = false
+		}
+		if dp.AudioProgress.Expected && !audio {
+			count++
+			allKnown = false
+		}
+		if allKnown && total > 0 {
+			dp.Progress = clamp(float64(downloaded) / float64(total) * 100)
+		} else {
+			dp.Progress = clamp(progress / float64(count))
+		}
+		return
+	}
 	var streams []*StreamProgress
 	if dp.VideoProgress.Expected {
 		streams = append(streams, &dp.VideoProgress)
@@ -261,6 +358,14 @@ func (dp *DownloadProgress) RecalculateAggregate() {
 // MarkIncompleteStreams sets the status of expected but non-completed streams.
 // Must be called inside an Update block.
 func (dp *DownloadProgress) MarkIncompleteStreams(status string) {
+	for id, stream := range dp.Streams {
+		if stream.Status != "completed" {
+			stream.Status = status
+			stream.Speed = 0
+			stream.ETA = nil
+			dp.Streams[id] = stream
+		}
+	}
 	if dp.VideoProgress.Expected && dp.VideoProgress.Status != "completed" {
 		dp.VideoProgress.Status = status
 		dp.VideoProgress.Speed = 0
@@ -280,9 +385,15 @@ func (dp *DownloadProgress) MarkIncompleteStreams(status string) {
 // which is the exact workload where sync.Map's read-optimised design is
 // counter-productive.
 type ProgressStore struct {
-	mu       sync.RWMutex
-	data     map[string]*DownloadProgress
-	eventBus *bus.Bus
+	mu         sync.RWMutex
+	data       map[string]*DownloadProgress
+	eventBus   *bus.Bus
+	path       string
+	dirty      chan struct{}
+	stop       chan struct{}
+	done       chan struct{}
+	errMu      sync.RWMutex
+	persistErr error
 }
 
 func NewProgressStore(eventBus *bus.Bus) *ProgressStore {
@@ -293,18 +404,20 @@ func NewProgressStore(eventBus *bus.Bus) *ProgressStore {
 }
 
 func (s *ProgressStore) Set(id string, dp *DownloadProgress) {
-	if s.eventBus != nil {
-		dp.OnUpdate = func(snap ProgressSnapshot) {
+	dp.OnUpdate = func(snap ProgressSnapshot) {
+		if s.eventBus != nil {
 			s.eventBus.Publish(bus.Event{
 				Type:       bus.EventProgress,
 				DownloadID: id,
 				Data:       snap,
 			})
 		}
+		s.changed()
 	}
 	s.mu.Lock()
 	s.data[id] = dp
 	s.mu.Unlock()
+	s.changed()
 }
 
 func (s *ProgressStore) Get(id string) (*DownloadProgress, bool) {
@@ -318,6 +431,16 @@ func (s *ProgressStore) Delete(id string) {
 	s.mu.Lock()
 	delete(s.data, id)
 	s.mu.Unlock()
+	s.changed()
+	if s.eventBus != nil {
+		s.eventBus.Publish(bus.Event{Type: bus.EventResync})
+	}
+}
+
+func (dp *DownloadProgress) OutputRoot() string {
+	dp.mu.RLock()
+	defer dp.mu.RUnlock()
+	return dp.OutputDirectory
 }
 
 // CleanupOldDownloads removes terminal downloads older than maxAge.
@@ -325,10 +448,21 @@ func (s *ProgressStore) Delete(id string) {
 // to keep the critical section as short as possible.
 func (s *ProgressStore) CleanupOldDownloads(maxAge time.Duration) int {
 	now := time.Now()
+	protected := make(map[string]bool)
+	for _, snap := range s.SnapshotAll() {
+		if snap.Kind == "batch" && !Terminal(snap.Status) {
+			for _, id := range snap.Children {
+				protected[id] = true
+			}
+		}
+	}
 
 	s.mu.RLock()
 	var toRemove []string
 	for id, dp := range s.data {
+		if protected[id] {
+			continue
+		}
 		snap := dp.Snapshot()
 		if snap.Status == "completed" || snap.Status == "failed" || snap.Status == "cancelled" {
 			refTime := snap.StartedAt
@@ -351,6 +485,7 @@ func (s *ProgressStore) CleanupOldDownloads(maxAge time.Duration) int {
 		delete(s.data, id)
 	}
 	s.mu.Unlock()
+	s.changed()
 
 	return len(toRemove)
 }
@@ -363,5 +498,12 @@ func (s *ProgressStore) SnapshotAll() []ProgressSnapshot {
 		out = append(out, dp.Snapshot())
 	}
 	s.mu.RUnlock()
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i].QueuedAt, out[j].QueuedAt
+		if a != nil && b != nil && !a.Equal(*b) {
+			return a.After(*b)
+		}
+		return out[i].DownloadID < out[j].DownloadID
+	})
 	return out
 }
