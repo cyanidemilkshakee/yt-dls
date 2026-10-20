@@ -1,170 +1,79 @@
-# YT-DL Studio (Go Edition)
+# YT-DL Studio
 
-A local-first web GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp), built with a Go backend and a dependency-light HTML/CSS/JavaScript frontend served directly from the Go binary.
+A local download studio powered by yt-dlp, a Go server, and React. Inspect media, choose formats or presets, submit playlists, monitor progress, cancel work, retry failed jobs, and retrieve completed files.
 
-## Features
+## Setup
 
-- Inspect videos and playlists before downloading.
-- Select video, audio, subtitle, metadata, and post-processing options.
-- Preview the exact server-generated yt-dlp command with secrets redacted.
-- Track downloads through Server-Sent Events, with automatic batch-polling fallback.
-- View per-download speed history and independent video/audio stream progress.
-- Clearly identify combined media streams without double-counting bytes.
-- Cancel downloads, view logs, and pause or resume processes on supported Unix systems.
-- Use secure defaults: loopback binding, origin checks, request limits, private-address blocking, and server-controlled output paths.
-- **Single binary distribution**: The entire frontend is bundled inside the compiled Go binary using `go:embed`.
-
-## Requirements
-
-- Go 1.21 or newer (for building)
-- yt-dlp 2026.06.09 or newer
-- FFmpeg in `PATH` for merging and post-processing
-- **Node.js, Deno, or Bun** installed on the system (Required by yt-dlp for YouTube signature extraction)
-
-Verify the external tools:
+Requirements: Go 1.26.6+, Node.js 22.12+, Python 3.10+ (for the optional project runtime), and FFmpeg/ffprobe on PATH.
 
 ```sh
-yt-dlp --version
-ffmpeg -version
+npm run setup
+npm run setup:runtime
+npm run dev
 ```
 
-Install yt-dlp with the included Python requirements file if needed:
+Open http://localhost:5173. The frontend proxies `/api` to the backend's configured port. `npm run setup:runtime` installs the pinned downloader and EJS solver in `.venv`; it does not modify global Python packages. A working Node.js or Deno runtime is also needed for YouTube. See the [yt-dlp EJS installation guide](https://github.com/yt-dlp/yt-dlp/wiki/EJS). Use **System Health** to check the actual dependency versions and download-directory access.
 
-```sh
-python -m pip install -r requirements.txt
-```
+Alternatively, install an official standalone yt-dlp build and set `YTDLP_PATH`. FFmpeg and its dependencies remain external to the server binary. System Health verifies the Python EJS package; a standalone executable's bundled EJS is reported as unverified. This project does not download or execute a JavaScript solver from the internet at request time.
 
-On Windows, `py -m pip install -r requirements.txt` can be used instead. A standalone `yt-dlp.exe` also works when its directory is in `PATH` or `YTDLP_PATH` points to it.
+Copy `.env.example` to `.env` if you need custom configuration. Empty downloader/runtime values mean automatic discovery. Malformed environment values fail at startup with an actionable error. The API accepts loopback hosts and configured browser origins; private-network media URLs, custom paths, file/credential access, and executable options require explicit opt-ins.
 
-## Quick start
-
-To run the application directly:
-
-```sh
-cd go
-go run cmd/server/main.go
-```
-
-To build a standalone executable:
+## Production build
 
 ```sh
 npm run build
-# The yt-dls executable will be produced in the root directory.
-./yt-dls
 ```
 
-The application listens on [http://127.0.0.1:7391](http://127.0.0.1:7391) by default and opens the browser automatically.
+Run `dist/yt-dls.exe` on Windows or `dist/yt-dls` on Linux/macOS. The build compiles and embeds the frontend, includes version/commit/build-time metadata, and writes SHA-256 checksums in `dist/SHA256SUMS`.
 
-## Configuration
-
-Copy `.env.example` to `.env` to override the defaults. The Go app parses `.env` at startup.
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `HOST` | `127.0.0.1` | Server bind address |
-| `PORT` | `7391` | HTTP port |
-| `AUTO_OPEN_BROWSER` | `true` | Open the frontend after startup |
-| `FRONTEND_ORIGIN` | local development origins | Comma-separated extra browser origins |
-| `DOWNLOAD_DIR` | `./downloads` | Server-controlled output directory |
-| `LOG_DIR` | `./logs` | Rotating log directory |
-| `YTDLP_PATH` | `yt-dlp` | yt-dlp executable name or absolute path |
-| `YTDLP_JS_RUNTIME` | `""` | Optional JS runtime for yt-dlp (e.g. `node`, `deno`) |
-| `LOG_LEVEL` | `info` | application log level |
-| `MAX_CONCURRENT_DOWNLOADS` | `3` | Maximum active yt-dlp processes |
-| `MAX_DOWNLOAD_DURATION_MS` | `1800000` | Hard timeout per download |
-| `YTDLP_CHECK_TIMEOUT_MS` | `15000` | yt-dlp availability-check timeout |
-| `INFO_TIMEOUT_MS` | `120000` | Metadata extraction timeout |
-| `INFO_MAX_OUTPUT_BYTES` | `16777216` | Metadata process output limit |
-| `REQUESTS_PER_MINUTE` | `180` | General API rate limit |
-| `DOWNLOAD_REQUESTS_PER_MINUTE` | `20` | Download-action rate limit |
-
-The following settings are intentionally disabled by default:
-
-| Variable | Enables |
-| --- | --- |
-| `ALLOW_CUSTOM_DOWNLOAD_PATH` | Client-selected output directories |
-| `ALLOW_DANGEROUS_OPTIONS` | Options such as `--exec`, `--netrc-cmd`, and `--enable-file-urls` |
-| `ALLOW_PRIVATE_URLS` | Requests to private and loopback network addresses |
-
-Only enable these options on a trusted local machine. The server refuses to combine them with a non-loopback `HOST`.
-
-> [!WARNING]
-> YT-DL Studio has no user authentication. Do not expose it directly to the public internet.
-
-## Scripts
-
-| Command | Description |
-| --- | --- |
-| `npm start` | Run the Go server |
-| `npm run build` | Build the Go server into a single executable |
-| `npm run css:watch` | Rebuild `go/frontend/styles.css` while editing styles using Tailwind |
-| `npm test` | Run the Go unit tests |
-
-## How downloads work
-
-1. The frontend submits structured options rather than a shell command.
-2. The backend validates the URL, output path, format selector, and every supported option.
-3. yt-dlp is spawned directly via Go's `os/exec`; no shell is involved.
-4. Machine-readable progress events are classified as video, audio, or combined media.
-5. Progress is delivered over SSE (Server-Sent Events) and displayed with aggregate and per-stream metrics.
-6. Terminal state, logs, and cleanup remain available in memory until evicted by the background janitor loop.
-
-Downloads are written to `DOWNLOAD_DIR`. Custom paths entered by a client are rejected unless `ALLOW_CUSTOM_DOWNLOAD_PATH=true`.
-
-## API
-
-All endpoints are mounted under `/api`.
-
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| `GET` | `/health` | Runtime, platform, yt-dlp, and output-directory health |
-| `POST` | `/info` | Extract normalized video or playlist metadata |
-| `GET` | `/downloads` | List tracked downloads |
-| `GET` | `/downloads/events` | SSE progress stream |
-| `GET` | `/downloads/status/batch?ids=...` | Poll several download states at once |
-| `POST` | `/download/command-preview` | Validate options and return a redacted command preview |
-| `POST` | `/download` | Start a download |
-| `GET` | `/download/:id/status` | Get aggregate, video, and audio progress |
-| `POST` | `/download/:id/cancel` | Cancel an active download |
-| `POST` | `/download/:id/pause` | Pause on supported Unix systems |
-| `POST` | `/download/:id/resume` | Resume on supported Unix systems |
-| `GET` | `/download/:id/log` | Get the in-memory download log |
-| `DELETE` | `/download/:id` | Remove a finished download record |
-
-Pause and resume return HTTP 501 on Windows; cancellation remains supported.
-
-## Project structure
-
-```text
-go/
-  cmd/server/main.go           Application entrypoint
-  internal/api/                Chi router, handlers, middleware
-  internal/config/             Environment parsing and config
-  internal/store/              In-memory progress state
-  internal/worker/             Worker pool, yt-dlp command execution
-  internal/queue/              Job queuing
-  internal/sse/                Server-Sent Events gateway
-  internal/validation/         URL, path, option validations
-  frontend/                    Embedded HTML/CSS/JS frontend
-    index.html
-    styles.css
-    js/                        Client-side logic
+```sh
+npm run build:all
 ```
 
-## Troubleshooting
+Produces Windows amd64, Linux amd64/arm64, and macOS amd64/arm64 binaries. Cross-compilation proves they compile; the CI matrix runs native tests on Windows, Linux, and macOS. The release workflow requires all native, race, installed-tool, and browser verification jobs to pass before uploading build artifacts. It does not automatically publish a GitHub release.
 
-- **yt-dlp is not available:** confirm `yt-dlp --version` works in the same terminal, or configure `YTDLP_PATH`.
-- **yt-dlp complains about missing JS runtime:** YouTube extraction now requires an external JS runtime. Install [Deno](https://deno.land/) or [Node.js](https://nodejs.org/), and ensure they are in your system's `PATH`.
-- **FFmpeg is missing or merging fails:** install FFmpeg and ensure `ffmpeg -version` works.
-- **The page does not open:** browse to `http://127.0.0.1:7391` and inspect the console logs.
-- **CORS request rejected:** use the built-in frontend or add the exact separate frontend origin to `FRONTEND_ORIGIN`.
-- **A URL is rejected as private:** this is SSRF protection; only opt in with `ALLOW_PRIVATE_URLS=true` on a trusted loopback deployment.
-- **Pause or resume fails on Windows:** use Cancel; process suspension is intentionally unsupported there.
+## Downloads and history
 
-## Legal note
+Each job writes to `<DOWNLOAD_DIR>/<job-id>/`, so simultaneous jobs with the same title or filename cannot share partial files. Presets specify the requested container; remuxing may fail when selected codecs cannot fit that container. Choose MKV or compatible formats in that case.
 
-Use yt-dlp only for content you are authorized to access and download. You are responsible for complying with applicable laws and service terms.
+Playlist selection accepts up to 500 occurrences. Choose a preset, then configure all shared output options and optional per-item filename templates before submitting. Admission continues on the server after the browser closes. Cancel a batch to stop pending admission and cancel its children. Finished child records remain available until the batch finishes.
 
-## License
+For one joined output, select **Concatenate selected items** in the playlist configuration. The server runs the original playlist once with explicit indexes in playlist order, keeps intermediate filenames distinct, and applies your filename template to the joined output. FFmpeg requires compatible codecs; a common recoding or audio conversion format may be needed. The `multi_video` policy joins only extractor multi-video sources, as defined by yt-dlp.
 
-MIT
+The configuration offers custom format/subtitle selectors, all supported backend containers and audio formats, arbitrary validated quality/bitrate, separate download/postprocessing overwrite policies, and browser-local saved output presets. Saved presets exclude paths, source-specific format IDs, credentials, and raw postprocessor arguments. System Health shows dependency versions, readiness, server policy, directory access, and concurrency.
+
+Downloads use live SSE updates, reconnect snapshots, version-aware resync, and polling fallback. Expand **Stream details** for per-stream bytes, speed, ETA, and status. Logs and action failures remain visible. Every terminal job can be retried with an optional replacement URL and current session settings into a new isolated directory. Pause/resume is unavailable; cancellation followed by retry starts a new job.
+
+History is stored atomically in `.yt-dls/history.json` (configurable through `STATE_DIR`). The server keeps up to 200 finished records and seven days of finished history, plus children of active batches, with a hard admission limit of 1,000 retained records. Active jobs become failed records after restart and require explicit retry. Corrupt history produces a startup error; preserve or rename that file before starting with empty history.
+
+Removing a record **does not delete downloaded media or partial files**. Before removing history, use **Manage files** to preview that job’s outputs, sidecars, and partial files, confirm permanent deletion, then select **Delete previewed files**. Cleanup rejects active jobs/batches, symlinks, changed previews, and files outside owned directories, and waits for workers/file transfers to finish. No automatic media deletion is performed.
+
+The interface provides links to up to 5,000 media, subtitle, thumbnail, and JSON sidecar files per job, showing 20 links at a time. Any further files remain in that job’s directory and a log notice explains the result-link limit. Cleanup previews are also bounded to 5,000 files and reject larger directories for manual review. A configured `YTDLP_PATH` remains authoritative; leave it empty to use the project-local runtime installed by `npm run setup:runtime`.
+
+## Privacy
+
+Passwords and proxy URLs live in browser session storage and active process memory; ordinary advanced settings and appearance preferences use local storage. Diagnostic logs are redacted and limited to 64 KiB per job, with a short tail saved in history. Saved retry options omit advanced credentials and executable/file settings. History redacts source URL queries; a retry of a signed source may require the original URL and current session credentials again.
+
+The interface uses system fonts and includes no analytics or advertising. Source metadata, thumbnails, and media downloads contact the chosen services. Optional SponsorBlock settings also contact SponsorBlock. Anyone with local access to the machine can read its downloaded files; the service is intended for trusted local use.
+
+## Verification and contributing
+
+```sh
+npm test
+npm run lint
+npm run test:race
+npx playwright install chromium firefox webkit
+npm run test:browser
+npm run api:check
+npm audit
+npm audit --prefix web
+go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+```
+
+Race tests require CGO and a compatible C compiler. CI runs them on Linux and macOS. The suite includes real subprocess fixtures for progress, cancellation of descendants, output limits, metadata, queue/batch lifecycle, file containment, SSE frames, and history recovery; frontend tests cover API pagination/cancellation, settings migration, presets, sizes, focus, duplicate playlist entries, and action failures. Browser CI runs Chromium, mobile Chromium, Firefox, and WebKit against the real Go API with deterministic downloader fixtures; it checks inspection/configuration, keyboard focus, automated accessibility/contrast, live updates and fallback, settings privacy, batch/concatenation, cancellation/retry, results, and confirmed cleanup. Optional installed-tool tests verify generated media conversion and selected playlist concatenation with actual yt-dlp/FFmpeg. External source support still depends on yt-dlp and the source service.
+
+The canonical [API contract](api/contract.json) supplies Go/frontend option enums, byte limits, settings fields, request/response shapes, capabilities, and generated [client types](web/src/services/api-types.d.ts). After changing it, run `npm run api:generate`; CI rejects stale types and mismatched Go fields or actual API fixture responses.
+
+Frontend builds enforce gzip budgets of 160 KiB for application JavaScript, 25 KiB for stylesheets, and 125 KiB for application chunks. The deferred Three.js background has its own 250 KiB budget; it starts when the browser is idle and stays off in reduced-effects mode or when the system requests reduced motion. A static CSS gradient remains visible as a fallback.
+
+See [LICENSE](LICENSE).
