@@ -143,8 +143,8 @@ func TestHandleProgress_fragmentFallback(t *testing.T) {
 	}))
 
 	snap := dp.Snapshot()
-	if snap.Progress != 50 {
-		t.Errorf("fragment progress = %v, want 50", snap.Progress)
+	if snap.Progress != 40 {
+		t.Errorf("fragment progress = %v, want 40", snap.Progress)
 	}
 }
 
@@ -240,6 +240,23 @@ func TestHandleProgress_audioOnlyByCodec(t *testing.T) {
 	}
 	if snap.VideoProgress.Status != "waiting" {
 		t.Errorf("video status = %q, want waiting (unchanged)", snap.VideoProgress.Status)
+	}
+}
+
+func TestHandleProgress_codecMetadataWinsOverFilename(t *testing.T) {
+	dp := makeDP(true, true)
+	worker.HandleProgress(dp, jsonProgress(map[string]any{
+		"status":           "downloading",
+		"total_bytes":      float64(1000),
+		"downloaded_bytes": float64(250),
+		"filename":         "audio tutorial.f137.mp4",
+		"vcodec":           "avc1",
+		"acodec":           "none",
+	}))
+
+	snap := dp.Snapshot()
+	if snap.VideoProgress.Status != "downloading" || snap.AudioProgress.Status != "waiting" {
+		t.Fatalf("codec classification = video %q/audio %q, want downloading/waiting", snap.VideoProgress.Status, snap.AudioProgress.Status)
 	}
 }
 

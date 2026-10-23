@@ -14,7 +14,8 @@ import (
 type Job struct {
 	ID    string
 	Opts  DownloadOptions
-	DlDir string // resolved download directory
+	DlDir string      // resolved download directory
+	Built BuildResult // validated before admission
 }
 
 // Pool manages a pool of workers and coordinates execution.
@@ -44,7 +45,24 @@ func NewPool(cfg *config.Config, store *store.ProgressStore) *Pool {
 
 // Enqueue adds a job to the pool's queue.
 func (p *Pool) Enqueue(job Job) error {
+	if err := p.ctx.Err(); err != nil {
+		return err
+	}
 	return p.queue.Enqueue(job)
+}
+
+func (p *Pool) EnqueueWait(ctx context.Context, job Job) error {
+	combined, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stop := context.AfterFunc(p.ctx, cancel)
+	defer stop()
+	return p.queue.EnqueueWait(combined, job)
+}
+
+// RemoveQueued cancels admission for a job that has not yet been claimed by a
+// worker. The caller remains responsible for updating the download state.
+func (p *Pool) RemoveQueued(id string) bool {
+	return p.queue.Remove(func(job Job) bool { return job.ID == id })
 }
 
 // Start begins processing jobs from the queue.
@@ -101,7 +119,8 @@ func (p *Pool) cleanupLoop() {
 		select {
 		case <-ticker.C:
 			// Cleanup old downloads from the store
-			p.store.CleanupOldDownloads(1 * time.Hour)
+			p.store.CleanupOldDownloads(7 * 24 * time.Hour)
+			p.store.TrimHistory(200)
 		case <-p.ctx.Done():
 			return
 		}
@@ -110,5 +129,6 @@ func (p *Pool) cleanupLoop() {
 
 func (p *Pool) processJob(job Job) {
 	worker := NewWorker(job.ID, job.Opts, job.DlDir, p.cfg, p.store)
+	worker.Built = job.Built
 	worker.Run(p.ctx)
 }
