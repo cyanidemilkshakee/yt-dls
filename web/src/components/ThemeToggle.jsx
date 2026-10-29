@@ -1,23 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 export default function ThemeToggle() {
-  const [isDark, setIsDark] = useState(true);
-
-  useEffect(() => {
-    // Check initial class on HTML
-    const htmlClass = document.documentElement.className;
-    setIsDark(htmlClass.includes('dark'));
-  }, []);
+  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains('dark'));
 
   const toggleTheme = () => {
-    if (isDark) {
-      document.documentElement.classList.remove('dark');
-      document.documentElement.classList.add('light');
-    } else {
-      document.documentElement.classList.remove('light');
-      document.documentElement.classList.add('dark');
-    }
-    setIsDark(!isDark);
+    const nextIsDark = !isDark;
+    document.documentElement.classList.toggle('dark', nextIsDark);
+    document.documentElement.classList.toggle('light', !nextIsDark);
+    try { localStorage.setItem('yt-dls-theme', nextIsDark ? 'dark' : 'light'); } catch {}
+    setIsDark(nextIsDark);
   };
 
   return (
@@ -25,7 +16,10 @@ export default function ThemeToggle() {
       <button 
         id="theme-toggle" 
         onClick={toggleTheme}
-        className="p-3 rounded-full transition-colors duration-300 shadow-lg"
+        type="button"
+        aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}
+        aria-pressed={isDark}
+        className="theme-toggle p-3 rounded-full transition-colors duration-300"
       >
         {isDark ? (
           // Sun icon - shown in dark theme (light mode toggle)
