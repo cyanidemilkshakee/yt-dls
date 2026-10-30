@@ -1,156 +1,120 @@
 import './ConfigSection.css';
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { startDownload, getSettings } from '../../services/api';
+import contract from '../../../../api/contract.json';
+import FormatTables from './FormatTables';
+import OptionsSections from './OptionsSections';
+import SavedPresets from './SavedPresets';
+import InspectionDetails from './InspectionDetails';
+import BatchOptions from './BatchOptions';
+import { useEffect, useRef, useState } from 'react';
+import { startDownload, startBatch, previewCommand, getSettings, getSystemHealth } from '../../services/api';
 
-function Checkbox({ checked, onChange, disabled, children }) {
-  return (
-    <label className="cb-label">
-      <input type="checkbox" checked={checked} onChange={onChange} disabled={disabled} />
-      <span className="cb-box" />
-      <span className="cb-text">{children}</span>
-    </label>
-  );
-}
+import { useConfiguration } from './useConfiguration';
+import { estimateSize, buildOptions } from './model';
 
-function Accordion({ title, open, onToggle, children }) {
-  return (
-    <div className="cfg-accordion">
-      <button className="cfg-accordion-trigger" onClick={onToggle}>
-        <span>{title}</span>
-        <motion.svg 
-          animate={{ rotate: open ? 180 : 0 }} 
-          transition={{ duration: 0.3, ease: "easeInOut" }}
-          className="cfg-accordion-chevron" 
-          viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </motion.svg>
-      </button>
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div 
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            style={{ overflow: 'hidden' }}
-          >
-            <div className="cfg-accordion-body">{children}</div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-/* ── format tags ──────────────────────────────────────────────────────────── */
-function VideoTags({ format }) {
-  const text = `${format.id || ''} ${format.format_note || ''} ${format.format || ''}`.toLowerCase();
-  const tags = [];
-  if (/hdr|hdr10|rec2020|bt2020|hlg|pq|dolby.?vision|dv/i.test(text))
-    tags.push(<span key="hdr" className="cfg-tag cfg-tag-accent">HDR</span>);
-  if (/drc/i.test(format.id || ''))
-    tags.push(<span key="drc" className="cfg-tag cfg-tag-muted">DRC</span>);
-  if (/premium|high.?quality|hq/i.test(text))
-    tags.push(<span key="hq" className="cfg-tag cfg-tag-accent">HQ</span>);
-  const fpsMatch = text.match(/(\d+)fps/i);
-  if (fpsMatch && parseInt(fpsMatch[1]) >= 48)
-    tags.push(<span key="fps" className="cfg-tag cfg-tag-muted">{fpsMatch[1]}fps</span>);
-  return tags.length ? <>{tags}</> : null;
-}
-
-function AudioTags({ format }) {
-  const text = `${format.id || ''} ${format.format_note || ''} ${format.format || ''}`.toLowerCase();
-  const tags = [];
-  if (/drc/i.test(format.id || ''))
-    tags.push(<span key="drc" className="cfg-tag cfg-tag-muted">DRC</span>);
-  if (/premium|high.?quality|hq|lossless/i.test(text))
-    tags.push(<span key="hq" className="cfg-tag cfg-tag-accent">HQ</span>);
-  if (/spatial|surround|5\.1|7\.1|atmos/i.test(text))
-    tags.push(<span key="spatial" className="cfg-tag cfg-tag-accent">Spatial</span>);
-  return tags.length ? <>{tags}</> : null;
-}
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-export default function ConfigSection({ info, onClose, onDownloadStarted }) {
-  const initialVideoIds = new Set(info?.best_video_ids || []);
-  let initialAudioIdsArr = info?.best_audio_ids || [];
-  if (initialAudioIdsArr.length > 1) {
-    const nonDrc = initialAudioIdsArr.filter(id => !/-drc\b/i.test(id));
-    if (nonDrc.length > 0) initialAudioIdsArr = nonDrc;
-  }
-  const initialAudioIds = new Set(initialAudioIdsArr);
-
-  const [downloadMode, setDownloadMode]       = useState('both');
-  const [filenameBase, setFilenameBase]       = useState((info?.suggested_filename || info?.title || 'video').replace(/\.%\(ext\)s$/, ''));
-  const [outputFormat, setOutputFormat]       = useState('default');
-  const [downloadPath, setDownloadPath]       = useState('./downloads');
-  const [activePreset, setActivePreset]       = useState('default');
-
-  const [selectedVideoIds, setSelectedVideoIds] = useState(initialVideoIds);
-  const [selectedAudioIds, setSelectedAudioIds] = useState(initialAudioIds);
-  const [multiVideo, setMultiVideo]           = useState(false);
-  const [multiAudio, setMultiAudio]           = useState(false);
-
-  // Accordion state
-  const [openSubs,  setOpenSubs]  = useState(false);
-  const [openPost,  setOpenPost]  = useState(false);
-  const [openMeta,  setOpenMeta]  = useState(false);
-  const [openExtra, setOpenExtra] = useState(false);
-
-  // Subtitles
-  const [subtitleLang,   setSubtitleLang]   = useState('none');
-  const [subtitleFormat, setSubtitleFormat] = useState('best');
-  const [subtitlesEnabled, setSubtitlesEnabled] = useState(false);
-  const [embedSubs,      setEmbedSubs]      = useState(false);
+export default function ConfigSection({ info, onClose, onDownloadStarted, batchEntries, initialPreset = 'default', initialConfiguration, initialEntryNames }) {
+  const isBatch = Boolean(batchEntries);
+  const [entryNames, setEntryNames] = useState(initialEntryNames || {});
+  const dialogRef = useRef(null);
+  const closeHandlerRef = useRef(onClose);
+  const submittingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const previewController = useRef(null);
+  const submissionController = useRef(null);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; previewController.current?.abort(); submissionController.current?.abort(); };
+  }, []);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [thumbnailFailed, setThumbnailFailed] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const [capabilities, setCapabilities] = useState(null);
+  const admissionKey = useRef(crypto.randomUUID());
+  useEffect(() => { const controller = new AbortController(); getSystemHealth({ signal: controller.signal }).then(health => setCapabilities(health.capabilities)).catch(() => {}); return () => controller.abort(); }, []);
+  const { configuration, setField, applyPreset: resetPreset, downloadMode, setDownloadMode, filenameBase, setFilenameBase, outputFormat, setOutputFormat, downloadPath, setDownloadPath, activePreset, selectedVideoIds, setSelectedVideoIds, selectedAudioIds, setSelectedAudioIds, multiVideo, setMultiVideo, multiAudio, setMultiAudio } = useConfiguration(info, initialPreset, initialConfiguration);
   const [commandDraft, setCommandDraft] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const closeDialog = () => {
+    previewController.current?.abort();
+    submissionController.current?.abort();
+    onClose?.({ configuration, entryNames });
+  };
+  useEffect(() => { closeHandlerRef.current = closeDialog; });
 
-  // Post-processing
-  const [extractAudio,      setExtractAudio]      = useState(false);
-  const [keepVideo,         setKeepVideo]         = useState(false);
-  const [overwriteFiles,    setOverwriteFiles]    = useState(false);
-  const [remuxCheck,        setRemuxCheck]        = useState(false);
-  const [remuxFormat,       setRemuxFormat]       = useState('');
-  const [recodeCheck,       setRecodeCheck]       = useState(false);
-  const [recodeFormat,      setRecodeFormat]      = useState('');
-  const [convertSubsCheck,  setConvertSubsCheck]  = useState(false);
-  const [convertSubsFormat, setConvertSubsFormat] = useState('srt');
-  const [convertThumbCheck, setConvertThumbCheck] = useState(false);
-  const [convertThumbFormat,setConvertThumbFormat]= useState('jpg');
-  const [audioFormat,       setAudioFormat]       = useState('best');
-  const [audioQuality,      setAudioQuality]      = useState('');
-  const [postprocessorArgs, setPostprocessorArgs] = useState('');
+  useEffect(() => {
+    const previouslyFocused = document.activeElement;
+    const dialog = dialogRef.current;
+    const inertSiblings = [];
+    let current = dialog;
+    while (current?.parentElement) {
+      for (const sibling of current.parentElement.children) {
+        if (sibling !== current && sibling instanceof HTMLElement) {
+          inertSiblings.push([sibling, sibling.inert]);
+          sibling.inert = true;
+        }
+      }
+      current = current.parentElement;
+      if (current === document.body) break;
+    }
+    const focusableSelector = 'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+    const focusables = () => Array.from(dialog?.querySelectorAll(focusableSelector) || [])
+      .filter(element => element.getClientRects().length > 0 && !element.closest('[inert]'));
+    const initialFocus = requestAnimationFrame(() => (dialog?.querySelector('[aria-label="Close"]') || dialog)?.focus());
 
-  // Metadata
-  const [embedMetadata,  setEmbedMetadata]  = useState(false);
-  const [parseMetadata,  setParseMetadata]  = useState('');
-  const [replaceMetadata,setReplaceMetadata]= useState('');
+    const handleDialogKeys = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeHandlerRef.current?.();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const items = focusables();
+      if (items.length === 0) {
+        event.preventDefault();
+        dialog?.focus();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !dialog?.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !dialog?.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', handleDialogKeys);
+    return () => {
+      document.removeEventListener('keydown', handleDialogKeys);
+      cancelAnimationFrame(initialFocus);
+      inertSiblings.forEach(([element, wasInert]) => { element.inert = wasInert; });
+      requestAnimationFrame(() => {
+        if (previouslyFocused?.isConnected) previouslyFocused.focus?.();
+        else (document.getElementById('url-input') || document.querySelector('[data-playlist-submit]'))?.focus();
+      });
+    };
+  }, []);
 
-  // Additional
-  const [embedThumbnail, setEmbedThumbnail] = useState(false);
-  const [addChapters,    setAddChapters]    = useState(false);
-  const [embedInfoJson,  setEmbedInfoJson]  = useState(false);
-  const [writeXattrs,    setWriteXattrs]    = useState(false);
-  const [splitChapters,  setSplitChapters]  = useState(false);
-  const [forceKeyframes, setForceKeyframes] = useState(false);
-  const [concatPlaylist, setConcatPlaylist] = useState('multi_video');
-  const [fixupPolicy,    setFixupPolicy]    = useState('detect_or_warn');
+  // Accordion visibility is presentation state. Download behavior is derived
+  // from the actual option values so collapsing a section cannot discard a
+  // user's selections.
+  useEffect(() => { admissionKey.current = crypto.randomUUID(); previewController.current?.abort(); setPreviewLoading(false); setCommandDraft(null); }, [configuration, entryNames]);
+
 
   if (!info) return null;
+	const initialVideoIds = new Set(info.best_video_ids || []);
+	const initialAudioIds = new Set(info.best_audio_ids || []);
 
-  const subtitleLanguages = Array.from(new Set([
-    ...(info.subtitle_languages || []),
-    ...(info.subtitles || []).map(subtitle => subtitle.lang),
-  ].filter(Boolean))).sort();
-  const subtitleFormats = Array.from(new Set([
-    ...(info.subtitles || []).map(subtitle => subtitle.ext),
-    'best',
-  ].filter(format => ['best', 'srt', 'vtt', 'ass'].includes(format))));
-  const hasSubtitles = subtitleLanguages.length > 0;
+  const visibleVideoFormats = (info.video_formats || []).filter(format =>
+    (downloadMode !== 'video' && !multiVideo) || format.type === 'video'
+  );
+  const videoOnlyUnavailable = !isBatch && !configuration.customFormat.trim() && downloadMode === 'video' && !info.video_formats?.some(format => format.type === 'video');
 
   /* ── format click ─────────────────────────────────────────────────────── */
   const handleVideoFormatClick = (id) => {
+    const selectedFormat = info.video_formats?.find(format => format.id === id);
+    if (downloadMode === 'video' && selectedFormat?.type === 'combined') return;
+    if (multiVideo && selectedFormat?.type === 'combined') return;
     if (multiVideo) {
       const s = new Set(selectedVideoIds);
       if (s.has(id)) s.delete(id);
@@ -169,8 +133,8 @@ export default function ConfigSection({ info, onClose, onDownloadStarted }) {
 
   /* ── helpers ──────────────────────────────────────────────────────────── */
   const fmtSize = (bytes) => {
-    if (!bytes) return 'N/A';
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    if (!Number.isFinite(Number(bytes)) || bytes <= 0) return 'N/A';
+    const i = Math.min(4, Math.floor(Math.log(bytes) / Math.log(1024)));
     return (bytes / Math.pow(1024, i)).toFixed(2) * 1 + ' ' + ['B', 'kB', 'MB', 'GB', 'TB'][i];
   };
   const fmtDuration = (secs) => {
@@ -183,122 +147,71 @@ export default function ConfigSection({ info, onClose, onDownloadStarted }) {
   };
 
   /* ── preset ───────────────────────────────────────────────────────────── */
-  const applyPreset = (name) => {
-    setActivePreset(name);
-    setSelectedVideoIds(new Set());
-    setSelectedAudioIds(new Set());
-    setMultiVideo(false); setMultiAudio(false); setExtractAudio(false);
-    const bestV = () => setSelectedVideoIds(new Set(info?.best_video_ids || []));
-    const bestA = () => setSelectedAudioIds(new Set(info?.best_audio_ids || []));
-    if (name === 'default') { setDownloadMode('both'); setOutputFormat('default'); bestV(); bestA(); }
-    if (name === 'hq-mp4')  { setDownloadMode('both'); setOutputFormat('mp4');     bestV(); bestA(); }
-    if (name === 'mkv')     { setDownloadMode('both'); setOutputFormat('mkv');     bestV(); bestA(); }
-    if (name === 'mp3')     {
-      setDownloadMode('audio'); setOpenPost(true); setExtractAudio(true);
-      setAudioFormat('mp3'); setSelectedAudioIds(new Set(info?.best_audio_ids || []));
+  const applyPreset = name => { resetPreset(name); setCommandDraft(null); };
+  const { totalBytes, videoSize, audioSize, isApprox, incomplete } = estimateSize(info, configuration);
+
+  /* ── download request / server-generated preview ─────────────────────── */
+  const buildDownloadOptions = async () => {
+    const options = buildOptions(info, configuration, await getSettings());
+    if (isBatch && configuration.concatPlaylist !== 'never') {
+      if (configuration.concatPlaylist === 'always' && batchEntries.length < 2) throw new Error('Choose at least two playlist items to concatenate.');
+      if (!batchEntries.every(entry => Number.isInteger(entry.playlist_index) && entry.playlist_index > 0)) throw new Error('This source does not provide playlist indexes. Download separate files instead.');
+      if (new Set(batchEntries.map(entry => entry.playlist_index)).size !== batchEntries.length) throw new Error('Selected items have duplicate playlist indexes. Download separate files instead.');
+      options.playlistItems = batchEntries.map(entry => entry.playlist_index).sort((a, b) => a - b);
+    } else if (isBatch) {
+      options.url = batchEntries[0].url;
+      options.filename = entryNames[0] || filenameBase;
     }
+    return options;
   };
 
-  /* ── size ─────────────────────────────────────────────────────────────── */
-  let totalBytes = 0, videoSize = null, audioSize = null, isApprox = false;
-  if (downloadMode !== 'audio') {
-    const vf = info.video_formats?.find(f => selectedVideoIds.has(f.id));
-    if (vf?.filesize) { totalBytes += vf.filesize; videoSize = vf.filesize; if (vf.filesize_is_approx) isApprox = true; }
-  }
-  if (downloadMode !== 'video') {
-    const af = info.audio_formats?.find(f => selectedAudioIds.has(f.id));
-    if (af?.filesize) { totalBytes += af.filesize; audioSize = af.filesize; if (af.filesize_is_approx) isApprox = true; }
-  }
-
-  /* ── command ──────────────────────────────────────────────────────────── */
-  const generateCommand = () => {
-    let cmd = 'yt-dlp';
-    const vid = [...selectedVideoIds].join(',') || 'bestvideo';
-    const aud = [...selectedAudioIds].join(',') || 'bestaudio';
-    const fmt = downloadMode === 'both' ? `${vid}+${aud}/best`
-              : downloadMode === 'video' ? vid : aud;
-    cmd += ` -f "${fmt}"`;
-    if (outputFormat && outputFormat !== 'default') cmd += ` --merge-output-format ${outputFormat}`;
-    cmd += ` -o "${filenameBase || '%(title)s'}.%(ext)s"`;
-    if (downloadPath) cmd += ` -P "${downloadPath}"`;
-    if (subtitlesEnabled && subtitleLang !== 'none') {
-      cmd += ' --write-subs --write-auto-subs';
-      if (subtitleLang !== 'all') cmd += ` --sub-langs ${subtitleLang}`;
-      if (subtitleFormat !== 'best') cmd += ` --sub-format ${subtitleFormat}`;
+  const handlePreview = async () => {
+    if (videoOnlyUnavailable) {
+      setActionError('This source has no separate video-only format. Choose Video + Audio.');
+      return;
     }
-    if (embedSubs) cmd += ' --embed-subs';
-    if (embedThumbnail) cmd += ' --embed-thumbnail';
-    if (openMeta && embedMetadata) cmd += ' --embed-metadata';
-    if (addChapters) cmd += ' --add-chapters';
-    if (embedInfoJson) cmd += ' --embed-info-json';
-    if (writeXattrs) cmd += ' --xattrs';
-    if (openPost && extractAudio) {
-      cmd += ' -x';
-      if (audioFormat && audioFormat !== 'best') cmd += ` --audio-format ${audioFormat}`;
-      if (audioQuality) cmd += ` --audio-quality ${audioQuality}`;
+    previewController.current?.abort();
+    const controller = new AbortController(); previewController.current = controller;
+    setPreviewLoading(true); setActionError('');
+    try {
+      const options = await buildDownloadOptions();
+      if (controller.signal.aborted) return;
+      const result = await previewCommand(options, { signal: controller.signal });
+      if (mountedRef.current && !controller.signal.aborted) setCommandDraft(result.command || '');
+    } catch (err) {
+      if (mountedRef.current && !controller.signal.aborted) setActionError('Could not build command preview: ' + (err.message || err));
+    } finally {
+      if (mountedRef.current && previewController.current === controller) setPreviewLoading(false);
     }
-    if (openPost && keepVideo) cmd += ' -k';
-    if (openPost && !overwriteFiles) cmd += ' --no-post-overwrites';
-    if (openPost && remuxCheck && remuxFormat) cmd += ` --remux-video "${remuxFormat}"`;
-    if (openPost && recodeCheck && recodeFormat) cmd += ` --recode-video "${recodeFormat}"`;
-    if (convertSubsCheck && convertSubsFormat) cmd += ` --convert-subs ${convertSubsFormat}`;
-    if (convertThumbCheck && convertThumbFormat) cmd += ` --convert-thumbnails ${convertThumbFormat}`;
-    if (openPost && postprocessorArgs) cmd += ` --ppa "${postprocessorArgs}"`;
-    if (openMeta && parseMetadata) cmd += ` --parse-metadata "${parseMetadata}"`;
-    if (openMeta && replaceMetadata) cmd += ` --replace-in-metadata "${replaceMetadata}"`;
-    if (splitChapters) cmd += ' --split-chapters';
-    if (forceKeyframes) cmd += ' --force-keyframes-at-cuts';
-    if (fixupPolicy && fixupPolicy !== 'detect_or_warn') cmd += ` --fixup ${fixupPolicy}`;
-    if (concatPlaylist && concatPlaylist !== 'multi_video') cmd += ` --concat-playlist ${concatPlaylist}`;
-    cmd += ` "${info.original_url}"`;
-    return cmd;
   };
-  const generatedCommand = generateCommand();
 
   /* ── download ─────────────────────────────────────────────────────────── */
   const handleDownload = async () => {
+    if (submittingRef.current) return;
+    if (videoOnlyUnavailable) {
+      setActionError('This source has no separate video-only format. Choose Video + Audio.');
+      return;
+    }
+    submittingRef.current = true;
+    const controller = new AbortController(); submissionController.current = controller;
+    const idempotencyKey = admissionKey.current;
+    setIsSubmitting(true); setActionError('');
     try {
-      const vid = [...selectedVideoIds].join('+') || 'bestvideo';
-      const aud = [...selectedAudioIds].join('+') || 'bestaudio';
-      
-      const advancedSettings = await getSettings();
-
-      await startDownload({
-        url: info.original_url,
-        thumbnail: info.thumbnail,
-        formatCode: downloadMode === 'both' ? `${vid}+${aud}/best`
-                  : downloadMode === 'video' ? vid : aud,
-        filename: filenameBase, outputFormat, downloadPath,
-        enableSubtitles: subtitlesEnabled, subtitleLang, subtitleFormat, embedSubs,
-        enablePostprocessing: openPost, extractAudio, audioFormat, audioQuality,
-        remuxVideo: remuxCheck ? remuxFormat : null,
-        recodeVideo: recodeCheck ? recodeFormat : null,
-        convertSubs: convertSubsCheck ? convertSubsFormat : null,
-        convertThumb: convertThumbCheck ? convertThumbFormat : null,
-        postprocessorArgs, keepVideo, postOverwrites: overwriteFiles,
-        embedThumbnail, embedMetadata, addChapters, embedInfoJson,
-        parseMetadata: openMeta ? parseMetadata : null,
-        replaceInMetadata: openMeta ? replaceMetadata : null,
-        xattrs: writeXattrs, fixup: fixupPolicy, splitChapters, forceKeyframes, concatPlaylist,
-        advancedSettings,
-      });
-      onDownloadStarted?.();
+      const options = await buildDownloadOptions();
+      if (controller.signal.aborted) return;
+      if (isBatch && configuration.concatPlaylist === 'never') {
+        await startBatch(batchEntries.map((entry, index) => ({ url: entry.url, thumbnail: entry.thumbnail || '', filename: entryNames[index] || filenameBase })), options, { idempotencyKey, signal: controller.signal });
+      } else await startDownload(options, { idempotencyKey, signal: controller.signal });
+      if (mountedRef.current && !controller.signal.aborted) onDownloadStarted?.();
     } catch (err) {
-      console.error('Download failed to start:', err);
-      alert('Failed to start download: ' + (err.message || err));
+      if (mountedRef.current && !controller.signal.aborted) setActionError('Failed to start download: ' + (err.message || err));
+    } finally {
+      submittingRef.current = false;
+      if (mountedRef.current) setIsSubmitting(false);
     }
   };
 
   /* ── select helpers ───────────────────────────────────────────────────── */
-  const Select = ({ value, onChange, disabled, children, className = '' }) => (
-    <select
-      value={value} onChange={onChange} disabled={disabled}
-      className={`cfg-inline-select ${className}`}
-    >
-      {children}
-    </select>
-  );
-
   const PRESETS = [
     { id: 'default', label: 'Default' },
     { id: 'hq-mp4',  label: 'Best MP4' },
@@ -311,17 +224,20 @@ export default function ConfigSection({ info, onClose, onDownloadStarted }) {
     { id: 'video', label: 'Video Only' },
     { id: 'audio', label: 'Audio Only' },
   ];
+  const handleModeChange = (mode) => {
+    setDownloadMode(mode);
+  };
 
   /* ══════════════════════════════════════════════════════════════════════════
      RENDER
   ══════════════════════════════════════════════════════════════════════════ */
   return (
-    <section id="config-section" className="cfg-shell card">
+    <section id="config-section" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="config-dialog-title" tabIndex={-1} className="cfg-shell card">
 
       {/* ── Header ── */}
       <div className="cfg-header">
-        <span className="cfg-header-title">Download Configuration</span>
-        <button className="cfg-close-btn" onClick={onClose} aria-label="Close">
+        <span id="config-dialog-title" className="cfg-header-title">{isBatch ? `Configure ${batchEntries.length} playlist items` : 'Download Configuration'}</span>
+        <button type="button" className="cfg-close-btn" onClick={closeDialog} aria-label="Close">
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
           </svg>
@@ -333,12 +249,14 @@ export default function ConfigSection({ info, onClose, onDownloadStarted }) {
 
         {/* ── 1. Meta row ── */}
         <div className="cfg-meta-row">
-          <img
+          {info.thumbnail && !thumbnailFailed ? <img
             id="config-thumbnail"
             src={info.thumbnail}
-            alt="Thumbnail"
+            alt=""
+            referrerPolicy="no-referrer"
+            onError={() => setThumbnailFailed(true)}
             className="cfg-thumb"
-          />
+          /> : <div className="cfg-thumb grid place-items-center text-xs text-white">Thumbnail unavailable</div>}
           <div className="cfg-meta-info">
             <p className="cfg-video-title">{info.title}</p>
             <div className="cfg-meta-chips">
@@ -373,7 +291,7 @@ export default function ConfigSection({ info, onClose, onDownloadStarted }) {
                 <input
                   type="text"
                   className="cfg-input"
-                  value={filenameBase}
+                  aria-label="Filename" value={filenameBase}
                   onChange={e => setFilenameBase(e.target.value)}
                 />
               </div>
@@ -382,22 +300,21 @@ export default function ConfigSection({ info, onClose, onDownloadStarted }) {
                   <p className="cfg-field-label">Container</p>
                   <select
                     className="cfg-input"
-                    value={outputFormat}
+                    aria-label="Container" value={outputFormat}
                     onChange={e => setOutputFormat(e.target.value)}
                     style={{ padding: '0.5rem 0.7rem' }}
                   >
                     <option value="default">Default</option>
-                    <option value="mp4">MP4</option>
-                    <option value="mkv">MKV</option>
-                    <option value="webm">WebM</option>
+                    {contract.enums.mergeFormats.map(format => <option key={format} value={format}>{format.toUpperCase()}</option>)}
                   </select>
+                  {outputFormat !== 'default' && <p className="cfg-hint">Remuxing keeps the selected codecs and may fail if this container cannot hold them. Recoding takes longer; MKV supports more codecs.</p>}
                 </div>
                 <div>
                   <p className="cfg-field-label">Download Path</p>
                   <input
                     type="text"
                     className="cfg-input"
-                    value={downloadPath}
+                    disabled={capabilities?.custom_download_path === false} aria-label="Download path" value={downloadPath}
                     onChange={e => setDownloadPath(e.target.value)}
                     placeholder="./downloads"
                   />
@@ -407,6 +324,12 @@ export default function ConfigSection({ info, onClose, onDownloadStarted }) {
           </div>
         </div>
 
+        <InspectionDetails info={info} />
+        <SavedPresets configuration={configuration} onApply={preset => setField('savedPreset', preset)} />
+        <label className="cfg-field-label">Custom format selector
+          <input className="cfg-input" aria-label="Custom format selector" value={configuration.customFormat} onChange={event => setField('customFormat', event.target.value)} placeholder="Automatic, or bestvideo[height<=1080]+bestaudio/best" />
+        </label>
+        {isBatch && <BatchOptions entries={batchEntries} configuration={configuration} setField={setField} entryNames={entryNames} setEntryNames={setEntryNames} />}
         {/* ── 2. Controls: Presets + Mode ── */}
         <div className="cfg-controls-row">
           <div>
@@ -416,6 +339,7 @@ export default function ConfigSection({ info, onClose, onDownloadStarted }) {
                 <button
                   key={p.id}
                   className={`seg-btn ${activePreset === p.id ? 'seg-active-green' : ''}`}
+                  aria-pressed={activePreset === p.id}
                   onClick={() => applyPreset(p.id)}
                 >
                   {p.label}
@@ -430,7 +354,8 @@ export default function ConfigSection({ info, onClose, onDownloadStarted }) {
                 <button
                   key={m.id}
                   className={`seg-btn ${downloadMode === m.id ? 'seg-active' : ''}`}
-                  onClick={() => setDownloadMode(m.id)}
+                  aria-pressed={downloadMode === m.id}
+                  onClick={() => handleModeChange(m.id)}
                 >
                   {m.label}
                 </button>
@@ -439,292 +364,54 @@ export default function ConfigSection({ info, onClose, onDownloadStarted }) {
           </div>
         </div>
 
-        {/* ── 3. Format tables ── */}
-        <div className="cfg-tables-row">
-          {/* Video */}
-          <div className="cfg-table-panel">
-            <div className="cfg-table-head-bar">
-              <span className="cfg-table-head-title">Video Formats</span>
-              <Checkbox checked={multiVideo} onChange={e => setMultiVideo(e.target.checked)}>
-                Multi-select
-              </Checkbox>
-            </div>
-            <div className="cfg-table-scroll">
-              <table className="cfg-table">
-                <thead>
-                  <tr>
-                    <th>ID</th><th>Ext</th><th>Res</th><th>Bitrate</th><th>Size</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {info.video_formats?.length > 0 ? info.video_formats.map(fmt => {
-                    const isBest = initialVideoIds.has(fmt.id);
-                    const isSel  = selectedVideoIds.has(fmt.id);
-                    const kbps   = fmt.vbr ? `${Math.round(fmt.vbr)}k` : fmt.tbr ? `${Math.round(fmt.tbr)}k` : '—';
-                    return (
-                      <tr
-                        key={fmt.id}
-                        onClick={() => handleVideoFormatClick(fmt.id)}
-                        className={`${isBest ? 'cfg-row-best' : ''} ${isSel ? 'cfg-row-selected' : ''}`}
-                      >
-                        <td className="font-mono text-xs">{fmt.id}</td>
-                        <td>{fmt.ext}<VideoTags format={fmt} /></td>
-                        <td>{fmt.resolution || '—'}</td>
-                        <td>{kbps}</td>
-                        <td>{fmt.filesize_is_approx ? '~' : ''}{fmtSize(fmt.filesize)}</td>
-                      </tr>
-                    );
-                  }) : (
-                    <tr><td colSpan="5" style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-secondary-light)' }}>No video formats</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Audio */}
-          <div className="cfg-table-panel">
-            <div className="cfg-table-head-bar">
-              <span className="cfg-table-head-title">Audio Formats</span>
-              <Checkbox checked={multiAudio} onChange={e => setMultiAudio(e.target.checked)}>
-                Multi-select
-              </Checkbox>
-            </div>
-            <div className="cfg-table-scroll">
-              <table className="cfg-table">
-                <thead>
-                  <tr>
-                    <th>ID</th><th>Ext</th><th>Bitrate</th><th>Size</th><th>Codec</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {info.audio_formats?.length > 0 ? info.audio_formats.map(fmt => {
-                    const isBest = initialAudioIds.has(fmt.id);
-                    const isSel  = selectedAudioIds.has(fmt.id);
-                    const kbps   = fmt.abr ? `${Math.round(fmt.abr)}k` : '—';
-                    return (
-                      <tr
-                        key={fmt.id}
-                        onClick={() => handleAudioFormatClick(fmt.id)}
-                        className={`${isBest ? 'cfg-row-best' : ''} ${isSel ? 'cfg-row-selected' : ''}`}
-                      >
-                        <td className="font-mono text-xs">{fmt.id}</td>
-                        <td>{fmt.ext}<AudioTags format={fmt} /></td>
-                        <td>{kbps}</td>
-                        <td>{fmt.filesize_is_approx ? '~' : ''}{fmtSize(fmt.filesize)}</td>
-                        <td className="font-mono text-xs truncate" style={{ maxWidth: '7rem' }} title={fmt.acodec}>{fmt.acodec || '—'}</td>
-                      </tr>
-                    );
-                  }) : (
-                    <tr><td colSpan="5" style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-secondary-light)' }}>No audio formats</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
+        {!isBatch && <FormatTables disabled={Boolean(configuration.customFormat.trim())} {...{info, downloadMode, multiVideo, setMultiVideo, selectedVideoIds, setSelectedVideoIds, multiAudio, setMultiAudio, selectedAudioIds, setSelectedAudioIds, visibleVideoFormats, initialVideoIds, initialAudioIds, handleVideoFormatClick, handleAudioFormatClick, fmtSize}} />}
+        {videoOnlyUnavailable && <p role="status" className="cfg-hint">This source has no separate video-only format. Choose Video + Audio or enter a custom format selector.</p>}
         {/* ── 4. Size indicator ── */}
         <div className="cfg-size-bar">
           <div>
             <p className="cfg-size-label">Estimated Download Size</p>
-            <p className="cfg-size-breakdown">
+            {!isBatch && !configuration.customFormat.trim() && <p className="cfg-size-breakdown">
               Video: {videoSize ? fmtSize(videoSize) : '—'} &nbsp;·&nbsp; Audio: {audioSize ? fmtSize(audioSize) : '—'}
-            </p>
+            </p>}
+            {(isBatch || configuration.customFormat.trim()) && <p className="cfg-size-breakdown">The extractor selects formats when the job runs.</p>}
           </div>
           <p className="cfg-size-value">
-            {totalBytes > 0 ? `${isApprox ? '~' : ''}${fmtSize(totalBytes)}` : '—'}
+            {totalBytes > 0 ? `${isApprox ? '~' : ''}${fmtSize(totalBytes)}${incomplete ? ' + unknown' : ''}` : 'Unknown'}
           </p>
         </div>
 
-        {/* ── 5. Accordions ── */}
-
-        {/* Subtitles */}
-        <Accordion title="Subtitles" open={openSubs} onToggle={() => setOpenSubs(o => !o)}>
-          <div className="cfg-subtitle-grid">
-            <div>
-              <p className="cfg-field-label">Language</p>
-              <Select
-                value={subtitleLang}
-                disabled={!hasSubtitles}
-                onChange={e => {
-                  const value = e.target.value;
-                  setSubtitleLang(value);
-                  setSubtitlesEnabled(value !== 'none');
-                }}
-              >
-                <option value="none">No Subtitles</option>
-                {subtitleLanguages.length > 1 && <option value="all">All Languages</option>}
-                {subtitleLanguages.map(l => <option key={l} value={l}>{l}</option>)}
-              </Select>
-            </div>
-            <div>
-              <p className="cfg-field-label">Format</p>
-              <Select value={subtitleFormat} disabled={!hasSubtitles} onChange={e => setSubtitleFormat(e.target.value)}>
-                {subtitleFormats.map(format => <option key={format} value={format}>{format.toUpperCase()}</option>)}
-              </Select>
-            </div>
-          </div>
-          {hasSubtitles ? (
-            <Checkbox checked={embedSubs} onChange={e => setEmbedSubs(e.target.checked)} disabled={!subtitlesEnabled}>Embed subtitles into file</Checkbox>
-          ) : (
-            <p className="cfg-empty-state">No subtitles are available for this video.</p>
-          )}
-          {info.subtitles?.length > 0 && (
-            <div className="cfg-table-panel">
-              <div className="cfg-table-scroll" style={{ maxHeight: '140px' }}>
-                <table className="cfg-table">
-                  <thead><tr><th>Lang</th><th>Name</th><th>Auto</th></tr></thead>
-                  <tbody>
-                    {info.subtitles.map((s, i) => (
-                      <tr key={i}><td>{s.lang}</td><td>{s.name}</td><td>{s.auto ? 'Yes' : 'No'}</td></tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </Accordion>
-
-        {/* Post-processing */}
-        <Accordion title="Post-processing" open={openPost} onToggle={() => setOpenPost(o => !o)}>
-          <div className="cfg-opt-grid">
-            <Checkbox checked={extractAudio}   onChange={e => setExtractAudio(e.target.checked)}>Extract Audio</Checkbox>
-            <Checkbox checked={keepVideo}       onChange={e => setKeepVideo(e.target.checked)}>Keep Video</Checkbox>
-            <Checkbox checked={overwriteFiles}  onChange={e => setOverwriteFiles(e.target.checked)} disabled={keepVideo}>Overwrite Files</Checkbox>
-          </div>
-
-          {extractAudio && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', padding: '0.75rem', borderRadius: '0.5rem', background: 'rgba(0,0,0,0.04)', border: '1px solid var(--border-light)' }}>
-              <div>
-                <p className="cfg-field-label">Audio Format</p>
-                <Select value={audioFormat} onChange={e => setAudioFormat(e.target.value)}>
-                  <option value="best">Best</option>
-                  <option value="mp3">MP3</option>
-                  <option value="m4a">M4A</option>
-                  <option value="flac">FLAC</option>
-                  <option value="wav">WAV</option>
-                  <option value="opus">Opus</option>
-                </Select>
-              </div>
-              <div>
-                <p className="cfg-field-label">Quality</p>
-                <Select value={audioQuality} onChange={e => setAudioQuality(e.target.value)}>
-                  <option value="">Default (VBR 5)</option>
-                  <option value="0">0 — Best</option>
-                  <option value="5">5 — Standard</option>
-                  <option value="9">9 — Smallest</option>
-                  <option value="320K">320K CBR</option>
-                  <option value="256K">256K CBR</option>
-                  <option value="192K">192K CBR</option>
-                </Select>
-              </div>
-            </div>
-          )}
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-            {[
-              { label: 'Remux to', check: remuxCheck, setCheck: setRemuxCheck, val: remuxFormat, setVal: setRemuxFormat, opts: ['mp4','mkv','webm'] },
-              { label: 'Recode to', check: recodeCheck, setCheck: setRecodeCheck, val: recodeFormat, setVal: setRecodeFormat, opts: ['mp4','mkv','webm'] },
-              { label: 'Convert Subs', check: convertSubsCheck, setCheck: setConvertSubsCheck, val: convertSubsFormat, setVal: setConvertSubsFormat, opts: ['srt','vtt','ass'] },
-              { label: 'Convert Thumb', check: convertThumbCheck, setCheck: setConvertThumbCheck, val: convertThumbFormat, setVal: setConvertThumbFormat, opts: ['jpg','png','webp'] },
-            ].map(({ label, check, setCheck, val, setVal, opts }) => (
-              <div key={label} className="cfg-inline-row">
-                <label className="cb-label" style={{ flexShrink: 0 }}>
-                  <input type="checkbox" checked={check} onChange={e => setCheck(e.target.checked)} />
-                  <span className="cb-box" />
-                </label>
-                <span className="cfg-inline-label">{label}</span>
-                <Select value={val} onChange={e => setVal(e.target.value)} disabled={!check}>
-                  {!val && <option value="">Select…</option>}
-                  {opts.map(o => <option key={o} value={o}>{o.toUpperCase()}</option>)}
-                </Select>
-              </div>
-            ))}
-          </div>
-
-          <div>
-            <p className="cfg-field-label">Post-processor Args (--ppa)</p>
-            <input
-              type="text"
-              className="cfg-input"
-              value={postprocessorArgs}
-              onChange={e => setPostprocessorArgs(e.target.value)}
-              placeholder="ffmpeg:-vcodec libx264"
-              style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}
-            />
-          </div>
-        </Accordion>
-
-        {/* Metadata */}
-        <Accordion title="Metadata" open={openMeta} onToggle={() => setOpenMeta(o => !o)}>
-          <Checkbox checked={embedMetadata} onChange={e => setEmbedMetadata(e.target.checked)}>Embed metadata</Checkbox>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            <div>
-              <p className="cfg-field-label">Parse Metadata</p>
-              <input type="text" className="cfg-input" value={parseMetadata} onChange={e => setParseMetadata(e.target.value)} placeholder="%(artist)s:%(title)s" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }} />
-            </div>
-            <div>
-              <p className="cfg-field-label">Replace in Metadata</p>
-              <input type="text" className="cfg-input" value={replaceMetadata} onChange={e => setReplaceMetadata(e.target.value)} placeholder="title /[.!?]/_" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }} />
-            </div>
-          </div>
-        </Accordion>
-
-        {/* Additional */}
-        <Accordion title="Additional Options" open={openExtra} onToggle={() => setOpenExtra(o => !o)}>
-          <div className="cfg-opt-grid">
-            <Checkbox checked={embedThumbnail} onChange={e => setEmbedThumbnail(e.target.checked)}>Embed Thumbnail</Checkbox>
-            <Checkbox checked={addChapters}    onChange={e => setAddChapters(e.target.checked)}>Add Chapters</Checkbox>
-            <Checkbox checked={embedInfoJson}  onChange={e => setEmbedInfoJson(e.target.checked)}>Embed info.json</Checkbox>
-            <Checkbox checked={writeXattrs}    onChange={e => setWriteXattrs(e.target.checked)}>Write xattrs</Checkbox>
-            <Checkbox checked={splitChapters}  onChange={e => setSplitChapters(e.target.checked)}>Split Chapters</Checkbox>
-            <Checkbox checked={forceKeyframes} onChange={e => setForceKeyframes(e.target.checked)}>Force Keyframes at Cuts</Checkbox>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            <div>
-              <p className="cfg-field-label">Fixup Policy</p>
-              <Select value={fixupPolicy} onChange={e => setFixupPolicy(e.target.value)}>
-                <option value="detect_or_warn">Detect or Warn</option>
-                <option value="never">Never</option>
-                <option value="warn">Warn</option>
-                <option value="ignore">Ignore</option>
-              </Select>
-            </div>
-            <div>
-              <p className="cfg-field-label">Concat Playlist</p>
-              <Select value={concatPlaylist} onChange={e => setConcatPlaylist(e.target.value)}>
-                <option value="multi_video">Multi Video</option>
-                <option value="never">Never</option>
-                <option value="always">Always</option>
-              </Select>
-            </div>
-          </div>
-        </Accordion>
-
+        <OptionsSections info={info} configuration={configuration} setField={setField} capabilities={capabilities} initialPostOpen={initialPreset === 'mp3'} />
         {/* ── Command preview ── */}
         <div>
           <div className="cfg-command-heading">
-            <p className="cfg-field-label">Generated Command</p>
+            <p className="cfg-field-label">Latest Server-validated Command Preview</p>
             {commandDraft !== null && (
-              <button type="button" className="cfg-command-reset" onClick={() => setCommandDraft(null)}>Reset generated</button>
+              <button type="button" className="cfg-command-reset" onClick={() => setCommandDraft(null)}>Clear preview</button>
             )}
           </div>
           <textarea
             className="cfg-command-box"
-            value={commandDraft ?? generatedCommand}
-            onChange={e => setCommandDraft(e.target.value)}
+            value={commandDraft ?? ''}
+            placeholder="Refresh the preview to see the command built from these options."
+            readOnly
             aria-label="Generated command"
           />
+          <p className="text-xs text-secondary-light dark:text-secondary-dark mt-1">
+            {isBatch && configuration.concatPlaylist === 'never' ? 'Preview shows the first item; all items use these shared options. ' : ''}This display contains redacted credentials. Each job gets its own directory; the generated job ID replaces &lt;job-id&gt;.
+          </p>
+          <button type="button" className="cfg-command-reset" onClick={handlePreview} disabled={previewLoading || videoOnlyUnavailable}>
+            {previewLoading ? 'Building preview…' : 'Refresh command preview'}
+          </button>
         </div>
 
       </div>{/* /cfg-body */}
 
       {/* ── Footer ── */}
       <div className="cfg-footer">
-        <button className="cfg-btn-cancel" onClick={onClose}>Cancel</button>
-        <button className="cfg-btn-download" onClick={handleDownload}>
-          Download
+        {actionError && <p role="alert">{actionError}</p>}
+        <button type="button" className="cfg-btn-cancel" onClick={closeDialog}>Cancel</button>
+        <button type="button" className="cfg-btn-download" onClick={handleDownload} disabled={videoOnlyUnavailable || isSubmitting}>
+          {isSubmitting ? 'Starting…' : isBatch ? configuration.concatPlaylist === 'never' ? 'Start batch' : 'Concatenate selected items' : 'Download'}
         </button>
       </div>
 
