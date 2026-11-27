@@ -1,186 +1,133 @@
-// In Vite development, call the Go server directly so a backend startup or
-// restart cannot be obscured by a generic Vite proxy 502. Production builds
-// stay same-origin and continue using the server's /api route.
-export const API_BASE_URL = location.protocol === 'file:'
-  ? 'http://localhost:7391/api'
-  : import.meta.env?.DEV
-    ? 'http://127.0.0.1:7391/api'
-    : `${location.origin}/api`;
+import { SECRET_SETTING_NAMES, unpackSettings, validateSettings } from './settings';
+import { assertContract } from './contract';
 
+const API_BASE_URL = '/api';
 const SETTINGS_KEY = 'yt-dls-advanced-settings';
 const SECRET_SETTINGS_KEY = 'yt-dls-session-secrets';
-const SECRET_SETTING_NAMES = new Set([
-  'password', 'twofactor', 'video-password', 'ap-password',
-  'client-certificate-password'
-]);
+let infoTimeoutMs = 610_000;
 
-async function apiRequest(path, options = {}) {
-  const { timeoutMs = 30_000, ...fetchOptions } = options;
+function normalizeDownloadOptions(options, definition = 'DownloadOptions') {
+  const normalized = { downloadMode: 'both', ...options, advancedSettings: validateSettings(options.advancedSettings || {}) };
+  for (const [key, value] of Object.entries(normalized)) if (value === null) delete normalized[key];
+  return assertContract(definition, normalized);
+}
+
+export async function apiRequest(path, options = {}) {
+  const { timeoutMs = 30_000, signal, ...fetchOptions } = options;
   const controller = new AbortController();
+  const abort = () => controller.abort(signal?.reason);
+  if (signal?.aborted) abort();
+  signal?.addEventListener('abort', abort, { once: true });
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
-      ...fetchOptions,
-      headers: { Accept: 'application/json', ...(fetchOptions.headers || {}) },
-      signal: controller.signal
+      ...fetchOptions, headers: { Accept: 'application/json', ...(fetchOptions.headers || {}) }, signal: controller.signal
     });
     const contentType = response.headers.get('content-type') || '';
-    const payload = contentType.includes('application/json')
-      ? await response.json()
-      : { error: (await response.text()).trim() || `HTTP ${response.status}` };
+    const payload = contentType.includes('application/json') ? await response.json() : { error: (await response.text()).trim() || `HTTP ${response.status}` };
     if (!response.ok) {
-      const fallbackMessage = response.status === 502
-        ? 'The local API server is unavailable. Start the backend on port 7391 and try again.'
-        : `HTTP ${response.status}`;
-      const error = new Error(payload.error || fallbackMessage);
-      error.status = response.status;
-      error.code = payload.code || payload.error_code;
-      error.payload = payload;
+      const error = new Error(payload.error || (response.status === 502 ? 'The local API server is unavailable. Start the backend and try again.' : `HTTP ${response.status}`));
+      Object.assign(error, { status: response.status, code: payload.code || payload.error_code, payload });
       throw error;
     }
     return payload;
   } catch (error) {
-    if (error.name === 'AbortError') {
-      const timeoutError = new Error('The backend request timed out.');
-      timeoutError.code = 'REQUEST_TIMEOUT';
-      throw timeoutError;
-    }
+    if (signal?.aborted) throw new DOMException('Request cancelled', 'AbortError');
+    if (controller.signal.aborted) throw Object.assign(new Error('The backend request timed out.'), { code: 'REQUEST_TIMEOUT' });
     throw error;
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
   }
 }
 
-export async function fetchPlatformInfo() {
-  try {
-    const health = await getSystemHealth();
-    return {
-      platform: health.platform || 'unknown',
-      supports_pause_resume: health.supports_pause_resume !== false,
-      capabilities: health.capabilities || {},
-      max_concurrent_downloads: health.max_concurrent_downloads || null
-    };
-  } catch (error) {
-    console.warn('Failed to fetch platform info:', error);
-    if (error.payload) return error.payload;
-    return null;
-  }
+const jsonPost = (body, options = {}) => ({ method: 'POST', ...options, headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, body: JSON.stringify(body) });
+
+export function fetchVideoInfo(url, advancedSettings = {}, options = {}) {
+  // Extraction is expensive. A failed extraction is retried explicitly by the user.
+  return apiRequest('/info', jsonPost(assertContract('InfoRequest', { url, advancedSettings: validateSettings(advancedSettings) }), { timeoutMs: infoTimeoutMs, ...options }));
 }
 
-export async function fetchVideoInfo(url, retries = 3) {
-  let lastError;
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      return await apiRequest(`/info?url=${encodeURIComponent(url)}`, { timeoutMs: 130_000 });
-    } catch (error) {
-      lastError = error;
-      // Vite returns 502 while the Go backend is still starting. Retry that
-      // transient proxy response, along with throttling and gateway timeouts.
-      const retryable = !error.status || error.status === 429 || error.status === 502 || error.status === 504;
-      if (!retryable || attempt === retries) throw error;
-      await new Promise((resolve) => setTimeout(resolve, Math.min(750 * 2 ** (attempt - 1), 5000)));
+export function startDownload(options, request = {}) {
+  const { idempotencyKey = crypto.randomUUID(), ...rest } = request;
+  return apiRequest('/download', jsonPost(normalizeDownloadOptions(options), { timeoutMs: 30_000, ...rest, headers: { 'Idempotency-Key': idempotencyKey } }));
+}
+export function startBatch(entries, options, request = {}) {
+  const { idempotencyKey = crypto.randomUUID(), ...rest } = request;
+  return apiRequest('/download/batch', jsonPost(assertContract('BatchRequest', { entries, options: normalizeDownloadOptions(options, 'SharedDownloadOptions') }), { timeoutMs: 45_000, ...rest, headers: { 'Idempotency-Key': idempotencyKey } }));
+}
+export function previewCommand(options, request = {}) { return apiRequest('/download/command-preview', jsonPost(normalizeDownloadOptions(options), { timeoutMs: 10_000, ...request })); }
+export function getDownloadLog(id, request = {}) { return apiRequest(`/download/${encodeURIComponent(id)}/log`, request); }
+export function cancelDownload(id) { return apiRequest(`/download/${encodeURIComponent(id)}/cancel`, { method: 'POST' }); }
+export function removeDownload(id) { return apiRequest(`/download/${encodeURIComponent(id)}`, { method: 'DELETE' }); }
+export async function retryDownload(id, url = '', idempotencyKey = crypto.randomUUID()) {
+  return apiRequest(`/download/${encodeURIComponent(id)}/retry`, jsonPost(assertContract('RetryRequest', { url, advancedSettings: await getSettings() }), { headers: { 'Idempotency-Key': idempotencyKey } }));
+}
+export function resultFileURL(id, index) { return `${API_BASE_URL}/download/${encodeURIComponent(id)}/file/${index}`; }
+export function getRetainedFiles(id, request = {}) { return apiRequest(`/download/${encodeURIComponent(id)}/files`, request); }
+export function cleanRetainedFiles(id, token, request = {}) { return apiRequest(`/download/${encodeURIComponent(id)}/files/cleanup`, jsonPost(assertContract('CleanupRequest', { token }), request)); }
+export function openDownloadEvents({ onEvent, onOpen, onError }) {
+  const source = new EventSource(`${API_BASE_URL}/downloads/events`);
+  source.onopen = onOpen;
+  source.onerror = onError;
+  source.onmessage = event => {
+    try { onEvent(JSON.parse(event.data)); } catch { onError(); }
+  };
+  return source;
+}
+
+export async function getAllDownloads(request = {}) {
+  const downloads = [];
+  let offset = 0;
+  for (let page = 0; page < 5; page++) {
+    const data = await apiRequest(`/downloads?limit=200&offset=${offset}`, request);
+    downloads.push(...(data.downloads || []));
+    if (data.next_offset >= data.total || data.next_offset <= offset) break;
+    offset = data.next_offset;
+  }
+  return { downloads };
+}
+export async function batchStatus(ids, request = {}) {
+  const result = new Map(), unique = [...new Set(ids || [])];
+  for (let offset = 0; offset < unique.length; offset += 50) {
+    const query = unique.slice(offset, offset + 50).map(encodeURIComponent).join(',');
+    const page = await apiRequest(`/downloads/status/batch?ids=${query}`, request);
+    for (const entry of Object.entries(page)) result.set(...entry);
+  }
+  return result;
+}
+export async function getSystemHealth(request = {}) {
+  let health;
+  try { health = await apiRequest('/health', { timeoutMs: 15_000, ...request }); }
+  catch (error) { if (error.status === 503 && error.payload) health = error.payload; else throw error; }
+  if (Number.isFinite(health.info_timeout_ms)) infoTimeoutMs = health.info_timeout_ms + 10_000;
+  return health;
+}
+
+function readStorage(storage, key) {
+  try { return unpackSettings(JSON.parse(storage.getItem(key) || '{}')); }
+  catch { return {}; }
+}
+export async function getSettings() {
+  const persistent = readStorage(localStorage, SETTINGS_KEY), secrets = readStorage(sessionStorage, SECRET_SETTINGS_KEY);
+  let migrated = false;
+  for (const name of SECRET_SETTING_NAMES) {
+    if (Object.prototype.hasOwnProperty.call(persistent, name)) {
+      if (!(name in secrets)) secrets[name] = persistent[name];
+      delete persistent[name]; migrated = true;
     }
   }
-  throw lastError;
-}
-
-export function startDownload(options) {
-  return apiRequest('/download', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(options),
-    timeoutMs: 15_000
-  });
-}
-
-export function previewCommand(options) {
-  return apiRequest('/download/command-preview', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(options),
-    timeoutMs: 10_000
-  });
-}
-
-export async function updateDownloadStatus(downloadId) {
-  try { return await apiRequest(`/download/${encodeURIComponent(downloadId)}/status`); }
-  catch (error) { if (error.status === 404) return null; throw error; }
-}
-
-export function getDownloadLog(downloadId) {
-  return apiRequest(`/download/${encodeURIComponent(downloadId)}/log`);
-}
-
-export function cancelDownload(downloadId) {
-  return apiRequest(`/download/${encodeURIComponent(downloadId)}/cancel`, { method: 'POST' });
-}
-
-export async function removeDownload(downloadId) {
-  try {
-    await apiRequest(`/download/${encodeURIComponent(downloadId)}`, { method: 'DELETE' });
-    return true;
-  } catch (error) {
-    console.warn('Remove request failed:', error);
-    return false;
+  if (migrated) {
+    // Remove old persisted credentials even if session storage is unavailable.
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ schema: 1, settings: persistent }));
+    sessionStorage.setItem(SECRET_SETTINGS_KEY, JSON.stringify({ schema: 1, settings: secrets }));
   }
+  return validateSettings({ ...persistent, ...secrets }, { sanitize: true });
 }
-
-export function pauseResumeDownload(downloadId, action) {
-  if (!['pause', 'resume'].includes(action)) return Promise.reject(new Error('Invalid download action'));
-  return apiRequest(`/download/${encodeURIComponent(downloadId)}/${action}`, { method: 'POST' });
-}
-
-export function getAllDownloads() {
-  return apiRequest('/downloads');
-}
-
-export async function batchStatus(ids) {
-  if (!ids?.length) return new Map();
-  const uniqueIds = [...new Set(ids)].slice(0, 50);
-  const query = uniqueIds.map(encodeURIComponent).join(',');
-  const result = await apiRequest(`/downloads/status/batch?ids=${query}`);
-  return new Map(Object.entries(result));
-}
-
-export async function getSystemHealth() {
-  try { return await apiRequest('/health', { timeoutMs: 15_000 }); }
-  catch (error) {
-    if (error.status === 503 && error.payload) return error.payload;
-    throw error;
-  }
-}
-
-export function getImpersonateTargets() {
-  return apiRequest('/list-impersonate-targets', { timeoutMs: 15_000 });
-}
-
-export function getApMsos() {
-  return apiRequest('/list-ap-msos', { timeoutMs: 15_000 });
-}
-
-// Settings storage
-function readJsonStorage(storage, key) {
-  try { return JSON.parse(storage.getItem(key) || '{}'); }
-  catch (error) {
-    console.warn(`Ignoring invalid saved settings for ${key}:`, error);
-    storage.removeItem(key);
-    return {};
-  }
-}
-
-export async function getSettings() {
-  return {
-    ...readJsonStorage(localStorage, SETTINGS_KEY),
-    ...readJsonStorage(sessionStorage, SECRET_SETTINGS_KEY)
-  };
-}
-
-export async function saveSettings(settings) {
-  const persistent = {};
-  const secrets = {};
-  for (const [name, settingValue] of Object.entries(settings)) {
-    (SECRET_SETTING_NAMES.has(name) ? secrets : persistent)[name] = settingValue;
-  }
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(persistent));
-  sessionStorage.setItem(SECRET_SETTINGS_KEY, JSON.stringify(secrets));
+export async function saveSettings(settings, capabilities) {
+  const validated = validateSettings(settings, { capabilities });
+  const persistent = {}, secrets = {};
+  for (const [name, value] of Object.entries(validated)) (SECRET_SETTING_NAMES.has(name) ? secrets : persistent)[name] = value;
+  sessionStorage.setItem(SECRET_SETTINGS_KEY, JSON.stringify({ schema: 1, settings: secrets }));
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify({ schema: 1, settings: persistent }));
 }

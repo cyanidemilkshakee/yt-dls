@@ -1,62 +1,111 @@
-import { useState, useEffect, useCallback } from 'react';
-import { getAllDownloads, batchStatus } from '../../services/api';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { getAllDownloads, batchStatus, openDownloadEvents } from '../../services/api';
+import { isTerminal, mergeDownloads } from './model';
 
 export function useDownloads() {
-  const [downloads, setDownloads] = useState([]);
-  const [downloadIds, setDownloadIds] = useState([]);
-  const isTerminal = (status) => ['completed', 'failed', 'cancelled'].includes(status);
-
-  // Fetch full download list initially
-  const fetchDownloads = useCallback(async () => {
-    try {
-      const data = await getAllDownloads();
-      const rawDownloads = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.downloads)
-          ? data.downloads
-          : Object.entries(data || {}).map(([id, info]) => ({ id, ...info }));
-      const list = rawDownloads
-        .filter(Boolean)
-        .map(download => ({
-          ...download,
-          id: download.download_id || download.id
-        }))
-        .filter(download => download.id);
-      setDownloads(list);
-      setDownloadIds(list.filter(d => !isTerminal(d.status)).map(d => d.id));
-    } catch (err) {
-      console.error('Failed to fetch downloads:', err);
-    }
-  }, []);
-
+  const [downloads, setDownloads] = useState([]), [error, setError] = useState(''), [loading, setLoading] = useState(true);
+  const [connection, setConnection] = useState('polling');
+  const refresh = useRef(async () => {});
+  const refetch = useCallback(() => refresh.current(), []);
   useEffect(() => {
-    fetchDownloads();
-  }, [fetchDownloads]);
-
-  // Poll for status updates
-  useEffect(() => {
-    if (downloadIds.length === 0) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const statuses = await batchStatus(downloadIds);
-        setDownloads(prev => prev.map(dl => {
-          if (statuses.has(dl.id)) {
-            return { ...dl, ...statuses.get(dl.id) };
-          }
-          return dl;
-        }));
-        setDownloadIds(prev => prev.filter(id => {
-          const snapshot = statuses.get(id);
-          return !snapshot || !isTerminal(snapshot.status);
-        }));
-      } catch (err) {
-        console.error('Failed to update download statuses:', err);
+    let active = true, list = [], lastFull = 0, timer, pending, queuedFull, controller, source, connected = false;
+    let reconnectTimer, reconnectDelay = 1000, sourceGeneration = 0;
+    let duringFetch = [];
+    const closeSource = () => {
+      sourceGeneration++;
+      const previous = source;
+      source = null;
+      connected = false;
+      previous?.close();
+    };
+    const publish = () => { if (active) { setDownloads(list); setLoading(false); setError(''); } };
+    const schedule = () => {
+      clearTimeout(timer);
+      if (active && document.visibilityState !== 'hidden') timer = setTimeout(poll, connected ? 30000 : list.some(item => !isTerminal(item.status)) ? 1000 : 10000);
+    };
+    const poll = (full = false) => {
+      if (!active) return Promise.resolve();
+      if (pending) {
+        if (!full) return pending;
+        queuedFull ||= pending.then(() => { queuedFull = null; return poll(true); });
+        return queuedFull;
       }
-    }, 1000); // 1-second polling interval
-
-    return () => clearInterval(interval);
-  }, [downloadIds]);
-
-  return { downloads, refetch: fetchDownloads };
+      clearTimeout(timer);
+      controller = new AbortController(); duringFetch = [];
+      const run = async () => {
+        try {
+          if (document.visibilityState === 'hidden' && !full) return;
+          const ids = list.filter(item => !isTerminal(item.status)).map(item => item.id);
+          if (full || connected || Date.now() - lastFull >= 10000) {
+            const data = await getAllDownloads({ signal: controller.signal });
+            if (!active) return;
+            list = mergeDownloads(list, data.downloads, true);
+            // Preserve events newer than the HTTP snapshot in flight.
+            for (const event of duringFetch) list = mergeDownloads(list, event.type === 'snapshot' ? event.downloads : [event.data], event.type === 'snapshot');
+            lastFull = Date.now();
+          } else if (ids.length) {
+            const statuses = await batchStatus(ids, { signal: controller.signal });
+            if (!active) return;
+            list = mergeDownloads(list, [...statuses.values()].filter(Boolean));
+            list = list.filter(item => !statuses.has(item.id) || statuses.get(item.id));
+          }
+          publish();
+        } catch (err) { if (active && err.name !== 'AbortError') setError(err.message || 'Could not refresh downloads'); }
+        finally { if (active) setLoading(false); }
+      };
+      pending = run().finally(() => { pending = null; schedule(); });
+      return pending;
+    };
+    const reconnect = () => {
+      if (!active || reconnectTimer != null || document.visibilityState === 'hidden') return;
+      const delay = reconnectDelay;
+      reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+      reconnectTimer = setTimeout(() => { reconnectTimer = undefined; connect(); }, delay);
+    };
+    const connect = () => {
+      if (!active || source || reconnectTimer != null || document.visibilityState === 'hidden' || !('EventSource' in window)) return;
+      const generation = ++sourceGeneration;
+      const current = () => active && sourceGeneration === generation && document.visibilityState !== 'hidden';
+      const onError = () => {
+        if (!current()) return;
+        // A failed EventSource may be CLOSED permanently in some browsers.
+        // Own reconnection so a closed source cannot strand the live feed.
+        closeSource();
+        setConnection('polling');
+        poll(true);
+        reconnect();
+      };
+      try {
+        const candidate = openDownloadEvents({
+          onOpen: () => { if (current()) { reconnectDelay = 1000; connected = true; setConnection('live'); poll(true); } },
+          onError,
+          onEvent: event => {
+            if (!current()) return;
+            if (event.type === 'resync') { poll(true); return; }
+            if (event.type === 'snapshot' && Array.isArray(event.downloads)) {
+              list = mergeDownloads(list, event.downloads, true); lastFull = Date.now();
+              if (pending) duringFetch.push(event);
+            } else if (event.type === 'progress' && event.data?.download_id) {
+              list = mergeDownloads(list, [event.data]);
+              if (pending) duringFetch.push(event);
+            } else return;
+            publish();
+          }
+        });
+        if (current()) source = candidate;
+        else candidate?.close();
+      } catch { onError(); }
+    };
+    refresh.current = () => poll(true);
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') { closeSource(); setConnection('polling'); clearTimeout(timer); clearTimeout(reconnectTimer); reconnectTimer = undefined; }
+      else { poll(true); connect(); }
+    };
+    const onFocus = () => { if (document.visibilityState !== 'hidden') { poll(true); connect(); } };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    poll(true); connect();
+    return () => { active = false; clearTimeout(timer); clearTimeout(reconnectTimer); controller?.abort(); closeSource(); window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVisibility); refresh.current = async () => {}; };
+  }, []);
+  return { downloads, refetch, error, loading, connection };
 }

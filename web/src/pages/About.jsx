@@ -1,77 +1,109 @@
+import { SiGithub } from 'react-icons/si';
+import './About.css';
+
+const workflow = [
+  {
+    title: 'Inspect a source',
+    description: 'Paste a video or playlist URL to view its details and available formats before downloading.',
+  },
+  {
+    title: 'Configure the download',
+    description: 'Choose quality, output options, and saved presets. Select individual entries when working with playlists.',
+  },
+  {
+    title: 'Follow and manage jobs',
+    description: 'Track progress in the queue, review completed files, retry failed jobs, and manage downloaded media.',
+  },
+];
+
 export default function About() {
-  return (
-    <div className="w-[60%] mx-auto space-y-12">
-      <section className="card p-8">
-        <div className="flex items-start gap-6">
-          <div className="flex-shrink-0">
-            <svg className="h-12 w-12 text-[var(--primary-green)]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg>
-          </div>
-          <div>
-            <h2 className="text-3xl font-bold mb-4">About YT-DL Studio</h2>
-            <p className="text-lg text-secondary-light dark:text-secondary-dark mb-4">
-              YT-DL Studio was created to provide a powerful, yet simple and safe, interface for the incredible `yt-dlp` command-line tool. Our goal is to protect people from the ads, trackers, and malware often pushed by alternative downloaders. We believe that the best software is safe, open, and accessible to everyone.
-            </p>
-            <p className="text-lg text-secondary-light dark:text-secondary-dark mb-6">
-              This tool helps creators, educators, and archivists save content from across the web. No ads, no trackers, no nonsense. Just a convenient web app that works wherever you need it.
-            </p>
-            <a href="#" className="btn btn-primary px-6 py-3">View Source on GitHub</a>
-          </div>
-        </div>
-      </section>
+  return <div className="about-page">
+    <header className="about-hero">
+      <div className="about-hero-copy">
+        <h1 className="about-title">About YT-DL Studio</h1>
+        <p className="about-lede">A local workspace for yt-dlp. Inspect videos and playlists, choose how to download them, and manage your jobs in one place. The app runs on your computer and opens in your browser.</p>
+      </div>
+      <a
+        className="about-source-link"
+        href="https://github.com/cyanidemilkshakee/yt-dls"
+        target="_blank"
+        rel="noreferrer"
+        aria-label="YT-DL Studio on GitHub"
+        title="View source on GitHub"
+      >
+        <SiGithub aria-hidden="true" />
+      </a>
+    </header>
 
-      <section className="card p-8">
-        <div className="flex items-start gap-6">
-          <div className="flex-shrink-0">
-            <svg className="h-12 w-12 text-[var(--primary-green)]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.57-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.286zm0 13.036h.008v.008h-.008v-.008z" /></svg>
-          </div>
-          <div>
-            <h2 className="text-3xl font-bold mb-4">Privacy Policy</h2>
-            <div className="prose dark:prose-invert max-w-none text-secondary-light dark:text-secondary-dark space-y-4">
-              <p>Our privacy policy is simple: <strong>we don’t collect or store anything about you</strong>. What you do with this tool is solely your business, not ours or anyone else’s. These terms are applicable only when using an official instance of YT-DL Studio. If you are using a self-hosted instance, you must contact the instance host for their policy.</p>
-              <h4 className="text-xl font-semibold !mt-6 !mb-2 text-text-light dark:text-text-dark">Zero-Log Policy</h4>
-              <p>The backend server, which processes download requests, has a strict zero-log policy. It does not store or track anything about individual users, the URLs they submit, or the content they download. All operations are handled in-memory and are stateless. Once a download is complete or fails, all associated information is purged.</p>
-              <h4 className="text-xl font-semibold !mt-6 !mb-2 text-text-light dark:text-text-dark">Data Processing</h4>
-              <p>When you request a download, the URL is passed to the server-side `yt-dlp` instance. The server fetches the metadata and the media content on your behalf. This media is never written to the server's disk permanently; it is streamed to a temporary file in a designated download directory and is accessible only for the duration of the download process. The management of these files is handled by the application logic, and they are intended for immediate retrieval by the user.</p>
-              <h4 className="text-xl font-semibold !mt-6 !mb-2 text-text-light dark:text-text-dark">Analytics</h4>
-              <p>We use a self-hosted, privacy-focused analytics tool (Plausible) to get an approximate number of active users. No identifiable information about you or your requests is ever stored. All data is anonymized and aggregated. Plausible doesn’t use cookies and is fully compliant with GDPR, CCPA, and PECR. This helps us understand usage patterns to improve the service without compromising your privacy.</p>
-              <h4 className="text-xl font-semibold !mt-6 !mb-2 text-text-light dark:text-text-dark">Third-Party Services</h4>
-              <p>This service may use Cloudflare for DDoS &amp; abuse protection. This is required to provide the best experience for everyone. Cloudflare is a privacy-conscious provider and is fully compliant with GDPR. Learn more about Cloudflare’s dedication to privacy on their official website.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-      
-      <section className="card p-8">
-        <div className="flex items-start gap-6">
-          <div className="flex-shrink-0">
-            <svg className="h-12 w-12 text-[var(--primary-green)]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
-          </div>
-          <div>
-            <h2 className="text-3xl font-bold mb-4">Terms of Service</h2>
-            <div className="prose dark:prose-invert max-w-none text-secondary-light dark:text-secondary-dark space-y-4">
-              <p>You, the end user, are solely responsible for what you do with this tool, including how you use and distribute the resulting content. Please be mindful when using the content of others and always credit original creators.</p>
-              <p>Ensure that your use of this service does not violate any local or international laws, terms of service for the source website, or copyright licenses. Fair use and proper attribution benefit everyone. When used for educational purposes, always cite your sources.</p>
-            </div>
-          </div>
-        </div>
-      </section>
+    <div className="about-layout">
+      <nav className="about-toc" aria-label="About page sections">
+        <a href="#the-app">The app</a>
+        <a href="#download-workflow">Download workflow</a>
+        <a href="#setup-health">Setup and system health</a>
+        <a href="#privacy">Privacy and local data</a>
+        <a href="#responsible-use">Responsible use</a>
+      </nav>
 
-      <section className="card p-8">
-        <div className="flex items-start gap-6">
-          <div className="flex-shrink-0">
-            <svg className="h-12 w-12 text-[var(--primary-green)]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>
+      <main className="about-main">
+        <section className="about-section" id="the-app" aria-labelledby="the-app-title">
+          <header className="about-section-header">
+            <h2 id="the-app-title">A clear place to manage downloads</h2>
+            <p>YT-DL Studio brings the most useful parts of a media download workflow into a straightforward interface.</p>
+          </header>
+          <p className="about-body-copy">Use the home page to inspect a source and prepare a download. The queue keeps active and completed jobs together, while settings let you tune yt-dlp for your needs. System Health reports which local tools are available when you need to troubleshoot.</p>
+        </section>
+
+        <section className="about-section" id="download-workflow" aria-labelledby="download-workflow-title">
+          <header className="about-section-header">
+            <h2 id="download-workflow-title">Download workflow</h2>
+            <p>Move from a link to a finished file without losing track of the job.</p>
+          </header>
+          <div className="about-feature-list">
+            {workflow.map((item) => <article className="about-feature" key={item.title}>
+              <h3>{item.title}</h3>
+              <p>{item.description}</p>
+            </article>)}
           </div>
-          <div>
-            <h2 className="text-3xl font-bold mb-4">A Heartfelt Thank You</h2>
-            <p className="text-lg text-secondary-light dark:text-secondary-dark mb-4">
-              YT-DL Studio would not exist without the monumental effort of the `yt-dlp` team and its contributors. This application is fundamentally a user interface built on top of their incredible, versatile, and tirelessly maintained open-source project.
-            </p>
-            <p className="text-lg text-secondary-light dark:text-secondary-dark">
-              We extend our deepest gratitude to them for their dedication to creating a tool that empowers users and champions a free, open internet. Their work is the engine that powers this entire studio.
-            </p>
+        </section>
+
+        <section className="about-section" id="setup-health" aria-labelledby="setup-health-title">
+          <header className="about-section-header">
+            <h2 id="setup-health-title">Setup and system health</h2>
+            <p>Install the app and its media tools, then use System Health to check readiness.</p>
+          </header>
+          <div className="about-setup-content">
+            <p>From the project folder, run <code>npm run setup</code> to install app dependencies and <code>npm run setup:runtime</code> to install the project-managed yt-dlp runtime. Start the app with <code>npm run dev</code>.</p>
+            <p>FFmpeg and ffprobe need to be installed separately and available on PATH. On macOS, use <code>brew install ffmpeg</code>. If you already have yt-dlp, set <code>YTDLP_PATH</code> to its executable.</p>
+            <p>Open <strong>System Health</strong> on the home page and select <strong>Refresh</strong> after installing tools. It shows detected versions, readiness, and next steps; when yt-dlp is missing, it provides the official installation link.</p>
           </div>
-        </div>
-      </section>
+        </section>
+
+        <section className="about-section" id="privacy" aria-labelledby="privacy-title">
+          <header className="about-section-header">
+            <h2 id="privacy-title">Privacy and local data</h2>
+            <p>The app runs locally and does not include analytics, advertising, remote fonts, or tracking scripts.</p>
+          </header>
+          <div className="about-privacy-list">
+            <article>
+              <h3>Media and history</h3>
+              <p>Downloaded media stays on your computer. Removing a history record does not delete its files; use Manage files to review and remove retained downloads.</p>
+            </article>
+            <article>
+              <h3>Credentials and preferences</h3>
+              <p>Passwords and proxy credentials are kept in browser session storage and active process memory. Other settings and appearance preferences use browser local storage.</p>
+            </article>
+            <article>
+              <h3>Network requests</h3>
+              <p>Metadata, thumbnails, and downloads connect to the media services you choose. Optional SponsorBlock settings contact that service.</p>
+            </article>
+          </div>
+        </section>
+
+        <footer className="about-footer" id="responsible-use">
+          <h2>Use content you have permission to download</h2>
+          <p>Follow the source site’s terms and applicable copyright rules. YT-DL Studio is built around open source tools including yt-dlp, FFmpeg, Go, and React.</p>
+        </footer>
+      </main>
     </div>
-  );
+  </div>;
 }

@@ -1,10 +1,12 @@
 import './ConfigSection.css';
+import ContentRegion from '../../components/ContentRegion';
 import contract from '../../../../api/contract.json';
 import FormatTables from './FormatTables';
 import OptionsSections from './OptionsSections';
 import SavedPresets from './SavedPresets';
 import InspectionDetails from './InspectionDetails';
 import BatchOptions from './BatchOptions';
+import { FiClock, FiUser, FiX } from 'react-icons/fi';
 import { useEffect, useRef, useState } from 'react';
 import { startDownload, startBatch, previewCommand, getSettings, getSystemHealth } from '../../services/api';
 
@@ -232,15 +234,13 @@ export default function ConfigSection({ info, onClose, onDownloadStarted, batchE
      RENDER
   ══════════════════════════════════════════════════════════════════════════ */
   return (
-    <section id="config-section" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="config-dialog-title" tabIndex={-1} className="cfg-shell card">
+    <ContentRegion id="config-section" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="config-dialog-title" tabIndex={-1} className="cfg-shell">
 
       {/* ── Header ── */}
       <div className="cfg-header">
         <span id="config-dialog-title" className="cfg-header-title">{isBatch ? `Configure ${batchEntries.length} playlist items` : 'Download Configuration'}</span>
         <button type="button" className="cfg-close-btn" onClick={closeDialog} aria-label="Close">
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
+          <FiX aria-hidden="true" className="w-4 h-4" />
         </button>
       </div>
 
@@ -262,17 +262,13 @@ export default function ConfigSection({ info, onClose, onDownloadStarted, batchE
             <div className="cfg-meta-chips">
               {info.uploader && (
                 <span className="cfg-chip">
-                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
-                  </svg>
+                  <FiUser aria-hidden="true" className="w-3 h-3" />
                   {info.uploader}
                 </span>
               )}
               {info.duration && (
                 <span className="cfg-chip">
-                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="10"/><path strokeLinecap="round" d="M12 6v6l4 2"/>
-                  </svg>
+                  <FiClock aria-hidden="true" className="w-3 h-3" />
                   {fmtDuration(info.duration)}
                 </span>
               )}
@@ -415,6 +411,6 @@ export default function ConfigSection({ info, onClose, onDownloadStarted, batchE
         </button>
       </div>
 
-    </section>
+    </ContentRegion>
   );
 }

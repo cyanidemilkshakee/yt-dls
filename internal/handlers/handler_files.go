@@ -66,6 +66,12 @@ func (a *App) openOwnedDirectory(dp *store.DownloadProgress) (*ownedDirectory, e
 	if err != nil {
 		return nil, fmt.Errorf("configured project root is unavailable")
 	}
+	// Resolve aliases in the recorded parent path before checking containment.
+	// On macOS, temporary paths can use /var even though the canonical path is
+	// /private/var, which otherwise makes a valid configured-root alias look external.
+	if canonicalParent, parentErr := filepath.EvalSymlinks(filepath.Dir(root)); parentErr == nil {
+		root = filepath.Join(filepath.Clean(canonicalParent), filepath.Base(root))
+	}
 	// The worker saves canonical output paths. Configured root aliases remain
 	// valid, but a symlink at the owned ID leaf remains forbidden below.
 	if root == filepath.Join(a.Cfg.DownloadDir, id) {

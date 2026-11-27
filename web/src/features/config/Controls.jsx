@@ -1,5 +1,6 @@
 import { useId } from 'react';
 import { motion, AnimatePresence, useIsPresent } from 'framer-motion';
+import { FiChevronDown } from 'react-icons/fi';
 export function Select({ value, onChange, disabled, children, label }) {
   return <select aria-label={label} value={value} onChange={onChange} disabled={disabled} className="cfg-inline-select">{children}</select>;
 }
@@ -29,15 +30,14 @@ export function Accordion({ title, open, onToggle, children }) {
     <div className="cfg-accordion">
       <button type="button" className="cfg-accordion-trigger" onClick={onToggle} aria-expanded={open} aria-controls={open ? contentId : undefined}>
         <span>{title}</span>
-        <motion.svg 
+        <motion.span
           animate={{ rotate: open ? 180 : 0 }} 
           transition={{ duration: 0.3, ease: "easeInOut" }}
           className="cfg-accordion-chevron" 
           aria-hidden="true"
-          viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
         >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </motion.svg>
+          <FiChevronDown className="h-full w-full" />
+        </motion.span>
       </button>
       <AnimatePresence initial={false}>
         {open && (

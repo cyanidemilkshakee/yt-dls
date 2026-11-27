@@ -284,8 +284,8 @@ func TestResultFileRejectsSymlinkReplacement(t *testing.T) {
 	dp.Paths = []string{path}
 	a.Store.Set(dp.DownloadID, dp)
 	got := request(router, http.MethodGet, "/api/download/linked-results/file/0", nil, nil)
-	if got.Code != http.StatusNotFound || got.Body.String() == "private" {
-		t.Fatalf("symlink result served: %d %s", got.Code, got.Body)
+	if got.Code != http.StatusForbidden || got.Body.String() == "private" {
+		t.Fatalf("symlink result was not blocked: %d %s", got.Code, got.Body)
 	}
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)

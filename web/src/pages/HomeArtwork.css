@@ -1,0 +1,160 @@
+.home-artwork {
+  --home-art-play: paused;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  color: var(--accent-text);
+  pointer-events: none;
+}
+
+.home-artwork::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, currentColor 0.8px, transparent 1.2px) center / 24px 24px;
+  mask-image: radial-gradient(ellipse at center, transparent 36%, black 100%);
+  opacity: 0.32;
+}
+
+.home-artwork svg {
+  position: absolute;
+  stroke-width: 1.6px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.home-artwork svg :is(path, circle, ellipse) {
+  vector-effect: non-scaling-stroke;
+}
+
+.home-artwork-emphasis {
+  stroke-width: 2.6px;
+}
+
+.home-artwork-sweep {
+  top: 0;
+  left: 0;
+  width: min(53%, 62rem);
+  opacity: 0.52;
+  transform-origin: left top;
+  animation: home-artwork-sweep 7s ease-in-out infinite alternate;
+}
+
+.home-artwork-mesh {
+  right: -3.5rem;
+  bottom: -6.5rem;
+  width: min(58%, 67rem);
+  opacity: 0.49;
+  animation: home-artwork-mesh 8s ease-in-out infinite alternate;
+}
+
+.home-artwork-orbit {
+  top: 8%;
+  right: 6%;
+  width: clamp(10rem, 19%, 18rem);
+  opacity: 0.66;
+  animation: home-artwork-orbit 8s ease-in-out infinite alternate;
+}
+
+.home-artwork-wave {
+  bottom: 7%;
+  left: 6%;
+  width: min(35%, 28rem);
+  opacity: 0.63;
+}
+
+.home-artwork-wave-lines {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: home-artwork-wave 2.8s ease-in-out infinite alternate;
+}
+
+.home-artwork-trace {
+  stroke-dasharray: 15 85;
+  animation: home-artwork-trace 5s linear infinite;
+}
+
+.home-artwork [data-art-motion] {
+  animation-play-state: var(--home-art-play);
+}
+
+.home-artwork[data-interacting],
+.page-container:focus-within .home-artwork {
+  --home-art-play: running;
+}
+
+@media (hover: hover) {
+  .page-container:hover .home-artwork {
+    --home-art-play: running;
+  }
+}
+
+@keyframes home-artwork-sweep {
+  to { transform: translate(-1.5rem, 1.25rem) rotate(-4deg) scale(1.07); }
+}
+
+@keyframes home-artwork-mesh {
+  to { transform: translate(-1.25rem, -0.8rem) rotate(-8deg); }
+}
+
+@keyframes home-artwork-orbit {
+  to { transform: translate(-0.4rem, 0.65rem) rotate(16deg); }
+}
+
+@keyframes home-artwork-wave {
+  from { transform: scaleY(0.72); }
+  to { transform: scaleY(1.16); }
+}
+
+@keyframes home-artwork-trace {
+  to { stroke-dashoffset: -100; }
+}
+
+.home-container {
+  position: relative;
+}
+
+@media (max-width: 900px) {
+  .home-artwork-sweep {
+    left: -3rem;
+    width: max(67%, 22rem);
+    opacity: 0.42;
+  }
+
+  .home-artwork-mesh {
+    right: min(-4.5rem, calc(100% - 32rem));
+    bottom: -7.5rem;
+    width: max(76%, 24rem);
+    opacity: 0.4;
+  }
+
+  .home-artwork-orbit {
+    top: 4.75rem;
+    right: 1.1rem;
+    width: clamp(7.5rem, 33%, 12rem);
+    opacity: 0.54;
+  }
+
+  .home-artwork-wave {
+    bottom: 1.6rem;
+    left: 1rem;
+    width: max(30%, 8rem);
+    opacity: 0.53;
+  }
+}
+
+.reduce-effects .home-artwork [data-art-motion] {
+  animation-name: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-artwork [data-art-motion] {
+    animation-name: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .home-artwork {
+    display: none;
+  }
+}

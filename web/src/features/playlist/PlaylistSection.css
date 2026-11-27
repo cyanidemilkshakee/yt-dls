@@ -10,9 +10,6 @@
   .playlist-title {
     @apply text-2xl font-bold;
   }
-  .playlist-subtitle {
-    @apply text-sm text-[var(--text-secondary-light)] dark:text-[var(--text-secondary-dark)];
-  }
   .playlist-controls {
     @apply flex justify-between items-center mb-4;
   }
@@ -21,25 +18,25 @@
   }
   .playlist-table-container {
     @apply max-h-96 border border-[var(--border-light)] dark:border-[var(--border-dark)] rounded-lg overflow-hidden overflow-y-auto;
+    background: var(--surface-light);
   }
+  .dark .playlist-table-container { background: var(--surface-dark); }
   .playlist-table-header {
-    @apply bg-gray-100 dark:bg-black/20 sticky top-0 z-10;
+    @apply sticky top-0 z-10;
+    background-color: var(--surface-raised-light);
   }
-  .playlist-th-center {
-    @apply p-3 w-12 text-center;
-  }
+  .dark .playlist-table-header { background-color: var(--surface-raised-dark); }
   .playlist-th-left {
     @apply p-3 text-left;
   }
   .playlist-th-right {
     @apply p-3 text-right;
   }
-  .playlist-tbody {
-    @apply divide-y divide-[var(--border-light)] dark:divide-[var(--border-dark)];
-  }
   .playlist-tr {
-    @apply hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer;
+    @apply transition-colors cursor-pointer;
   }
+  .playlist-tr:hover { background-color: var(--surface-raised-light); }
+  .dark .playlist-tr:hover { background-color: var(--surface-raised-dark); }
   .playlist-td-center {
     @apply p-3 text-center;
   }
@@ -53,8 +50,10 @@
     @apply flex items-center space-x-3;
   }
   .playlist-item-img {
-    @apply w-16 h-9 object-cover rounded border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800;
+    @apply w-16 h-9 object-cover rounded border border-[var(--border-light)] dark:border-[var(--border-dark)];
+    background-color: var(--surface-muted-light);
   }
+  .dark .playlist-item-img { background-color: var(--surface-muted-dark); }
   .playlist-item-details {
     @apply flex-1 min-w-0;
   }
@@ -62,7 +61,19 @@
     @apply font-medium text-sm line-clamp-2 mb-1;
   }
   .playlist-item-id {
-    @apply text-xs text-gray-500 dark:text-gray-400;
+    @apply text-xs;
+    color: var(--text-tertiary-light);
   }
+  .dark .playlist-item-id { color: var(--text-tertiary-dark); }
   
+}
+
+@media (max-width: 760px) {
+  .playlist-container { width:100%; min-width:0; margin-top:1rem; padding:1rem; }
+  .playlist-controls { flex-wrap:wrap; gap:1rem; }
+  .playlist-controls > label { width:100%; display:flex; align-items:center; justify-content:space-between; gap:.75rem; }
+  .playlist-controls select { min-width:10rem; }
+  .playlist-table-container { width:100%; min-width:0; overflow:auto; }
+  .playlist-table-container table { min-width:28rem; }
+  .playlist-item-img { flex-shrink:0; }
 }
